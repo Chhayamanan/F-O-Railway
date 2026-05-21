@@ -332,6 +332,12 @@ export default function App() {
           });
         }
         
+        if (data.pendingTrades && data.pendingTrades.length > 0) {
+          data.pendingTrades.forEach((pending: any) => {
+            addLog(`PENDING APPROVAL: ${pending.signal.symbol} requires ₹${pending.fundRequired.toFixed(2)}`);
+          });
+        }
+        
         const mappedResults = {
           success: true,
           darvas: {
@@ -960,7 +966,7 @@ export default function App() {
                     {results?.darvas ? (
                       <>
                         {/* Summary metrics header */}
-                        <div className="grid grid-cols-3 gap-6">
+                        <div className="grid grid-cols-4 gap-6">
                           <SummaryMetric 
                             label="Scan Scope" 
                             value={results.darvas.candidates?.length || 0} 
