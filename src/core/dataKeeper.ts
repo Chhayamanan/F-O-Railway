@@ -25,23 +25,30 @@ export class DataKeeper {
       data: currentCache?.data || {}
     };
 
-    const BATCH_SIZE = 5; // Reduced from 25 to 5 to avoid Yahoo rate limits (429) on shared IPs like Railway
-    for (let i = 0; i < uniqueSymbols.length; i += BATCH_SIZE) {
-      const batch = uniqueSymbols.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(async (symbol) => {
+    for (let i = 0; i < uniqueSymbols.length; i++) {
+      const symbol = uniqueSymbols[i];
+      let retries = 3;
+      while (retries > 0) {
         try {
-          // Standard Daily Data
           const candles = await YahooService.get90DayData(symbol);
-          cache.data[symbol] = candles;
-
-          console.log(`[DATA KEEPER] Updated ${symbol} (${i + batch.indexOf(symbol) + 1}/${uniqueSymbols.length})`);
+          if (candles && candles.length > 0) {
+            cache.data[symbol] = candles;
+            console.log(`[DATA KEEPER] Updated ${symbol} (${i + 1}/${uniqueSymbols.length})`);
+            break; 
+          } else {
+            console.warn(`[DATA KEEPER] Empty data for ${symbol}, retrying...`);
+            retries--;
+            if (retries > 0) await new Promise(resolve => setTimeout(resolve, 2000));
+          }
         } catch (err) {
-          console.error(`[DATA KEEPER] Failed to fetch ${symbol}:`, err);
+          console.error(`[DATA KEEPER] Failed to fetch ${symbol}, retries left ${retries - 1}:`, err);
+          retries--;
+           if (retries > 0) await new Promise(resolve => setTimeout(resolve, 2000));
         }
-      }));
+      }
       
-      // Larger delay to be nice to Yahoo API
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Sleep between requests
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
 
     // Save only once at the end to avoid massive I/O

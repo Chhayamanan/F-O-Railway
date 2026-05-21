@@ -108,10 +108,66 @@ export class MstockService {
   }
 
   static async getCurrentPrices(symbols: string[]) {
-    // For Mstock, if we don't have their quote API mapped out,
-    // we can return empty to trigger the Yahoo fallback, or try fetching.
-    // Let's just return empty so it falls back to Yahoo gracefully.
-    return {};
+    try {
+      const apiKey = process.env.MSTOCK_API_KEY;
+      if (!apiKey) return {};
+      
+      const sessionToken = await this.getMstockJwtToken();
+      if (!sessionToken) return {};
+
+      const nseTokens: string[] = [];
+      const symMap: Record<string, string> = {};
+
+      for (const rawSym of symbols) {
+         const cleanSym = rawSym.replace(".NS", "").replace(".BO", "");
+         // getSymbolToken is already implemented below in the file
+         const info = await this.getSymbolToken(cleanSym, apiKey, sessionToken);
+         if (info && info.token) {
+             nseTokens.push(info.token);
+             symMap[info.token] = cleanSym;
+         }
+      }
+
+      if (nseTokens.length === 0) return {};
+
+      const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
+      const body = {
+          mode: "OHLC",
+          exchangeTokens: {
+              NSE: nseTokens
+          }
+      };
+
+      const response = await axios({
+          method: 'GET',
+          url: url,
+          headers: {
+              'X-Mirae-Version': '1',
+              'Authorization': `Bearer ${sessionToken}`,
+              'X-PrivateKey': apiKey,
+              'Content-Type': 'application/json'
+          },
+          data: body 
+      });
+
+      const result: Record<string, {price: number, volume: number}> = {};
+      
+      if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
+          for (const item of response.data.data.fetched) {
+              const sym = symMap[item.symbolToken];
+              if (sym) {
+                  result[sym] = {
+                      price: item.ltp || item.close || 0,
+                      volume: item.volume || item.vtt || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0
+                  };
+              }
+          }
+      }
+      return result;
+    } catch (e: any) {
+      console.error("[MSTOCK] Error fetching live quotes:", e.message);
+      return {};
+    }
   }
 
   private static scripMasterData: any[] | null = null;

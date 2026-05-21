@@ -835,6 +835,16 @@ export default function App() {
                     Darvas Monitor
                   </button>
                   <button
+                    onClick={() => setActiveTab('pending')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                      activeTab === 'pending'
+                        ? 'bg-orange-600 text-white shadow-md'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    }`}
+                  >
+                    CEO Desk
+                  </button>
+                  <button
                     onClick={() => setActiveTab('rsTrend')}
                     className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
                       activeTab === 'rsTrend'
@@ -990,38 +1000,6 @@ export default function App() {
                             sub="Orders" 
                           />
                         </div>
-
-                        {/* Pending Approvals */}
-                        {results.darvas.pendingTrades?.length > 0 && (
-                          <section>
-                            <div className="flex items-center justify-between mb-4 px-1">
-                              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Pending CEO Approval</h3>
-                              <button
-                                onClick={() => approveTrades(results.darvas.pendingTrades)}
-                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-md active:scale-95 transition-transform"
-                              >
-                                Approve All
-                              </button>
-                            </div>
-                            <div className="space-y-3">
-                              {results.darvas.pendingTrades.map((pending: any, i: number) => (
-                                <div key={i} className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl flex items-center justify-between">
-                                  <div>
-                                    <h4 className="font-bold text-amber-400">{pending.signal.symbol}</h4>
-                                    <p className="text-[10px] text-zinc-400 mt-0.5">Quantity: <span className="font-bold text-zinc-200">{pending.quantity}</span> @ ₹{pending.signal.entry.toFixed(2)}</p>
-                                    <p className="text-[10px] text-emerald-400 mt-0.5 font-bold">Total Fund Required: ₹{pending.fundRequired.toFixed(2)}</p>
-                                  </div>
-                                  <button
-                                    onClick={() => approveTrades([pending])}
-                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-500/20"
-                                  >
-                                    Approve
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </section>
-                        )}
 
                         {/* Executions log */}
                         {results.darvas.executedTrades?.length > 0 && (
@@ -1386,6 +1364,97 @@ export default function App() {
                         <p className="text-xs max-w-xs mx-auto mb-4 text-zinc-600">Activate the Volume Spike detector above to evaluate and fetch trade volume anomalies.</p>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* 5. Pending Approvals Tab */}
+                {activeTab === 'pending' && (
+                  <div className="space-y-6">
+                    <div className="bg-[#0f0f12] p-6 rounded-2xl border border-zinc-800/80 space-y-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/60 pb-4 gap-3">
+                        <div>
+                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">CEO Trade Approval Center</h3>
+                          <p className="text-[10px] text-zinc-500">Review and authorize algorithmic trade signals before execution.</p>
+                        </div>
+                      </div>
+                      
+                      {/* Pending Approvals */}
+                      {results?.darvas?.pendingTrades?.length > 0 ? (
+                        <section>
+                          <div className="flex items-center justify-between mb-4 mt-6 px-1">
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Requires Your Authorization</h3>
+                            <button
+                              onClick={() => approveTrades(results.darvas.pendingTrades)}
+                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-md active:scale-95 transition-transform"
+                            >
+                              Approve All
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {results.darvas.pendingTrades.map((pending: any, i: number) => (
+                              <div key={i} className="bg-amber-500/10 border border-amber-500/30 p-5 rounded-xl flex flex-col gap-4">
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <h4 className="font-bold text-amber-400 text-xl">{pending.signal.symbol}</h4>
+                                    <p className="text-[10px] text-zinc-400 mt-0.5">Automated signal detected.</p>
+                                  </div>
+                                  <div className="px-2 py-1 bg-amber-500/20 text-amber-500 text-[10px] font-bold rounded">
+                                    PENDING
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 bg-black/40 p-3 rounded-lg border border-zinc-800/50">
+                                  <div>
+                                    <p className="text-[10px] text-zinc-500 uppercase">Quantity</p>
+                                    <p className="font-bold text-zinc-200">{pending.quantity}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] text-zinc-500 uppercase">Est. Price</p>
+                                    <p className="font-bold text-zinc-200">₹{pending.signal.entry.toFixed(2)}</p>
+                                  </div>
+                                  <div className="col-span-2 mt-2 pt-2 border-t border-zinc-800/50">
+                                    <p className="text-[10px] text-zinc-500 uppercase">Fund Required</p>
+                                    <p className="font-bold text-emerald-400">₹{pending.fundRequired.toFixed(2)}</p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => approveTrades([pending])}
+                                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold shadow-md shadow-emerald-500/20 active:scale-95 transition-all mt-2"
+                                >
+                                  Authorize Trade
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      ) : (
+                        <div className="bg-[#0f0f12]/30 border-2 border-dashed border-zinc-800 rounded-3xl p-16 text-center text-zinc-500 mt-6">
+                          <h4 className="text-sm font-bold text-zinc-400 mb-1">Queue is Empty</h4>
+                          <p className="text-xs max-w-xs mx-auto mb-4 text-zinc-600">No trades are pending CEO approval.</p>
+                        </div>
+                      )}
+
+                      {/* Rejected Signals */}
+                      {results?.darvas?.rejections?.length > 0 && (
+                        <section className="mt-8 pt-8 border-t border-zinc-800/60">
+                          <div className="flex items-center justify-between mb-4 px-1">
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Algorithm Rejections</h3>
+                          </div>
+                          <div className="space-y-3">
+                            {results.darvas.rejections.map((rej: any, i: number) => (
+                              <div key={i} className="bg-red-500/5 border border-red-500/20 p-4 rounded-xl flex items-center justify-between">
+                                <div>
+                                  <h4 className="font-bold text-red-400 text-sm">{rej.symbol}</h4>
+                                  <p className="text-xs font-mono text-red-400/70 mt-1">{rej.reason}</p>
+                                </div>
+                                <div className="px-2 py-1 bg-red-500/10 border border-red-500/30 text-red-500 text-[10px] uppercase font-bold rounded">
+                                  Rejected
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+                    </div>
                   </div>
                 )}
               </motion.div>

@@ -64,7 +64,8 @@ export class YahooService {
     }
 
     if (!result || result.length === 0) {
-      throw new Error("No data found, symbol may be delisted or incorrect");
+      console.warn(`[YAHOO] No data found for ${symbol}`);
+      return [];
     }
 
     return result;
@@ -76,41 +77,35 @@ export class YahooService {
   }
 
   static async getCurrentPrices(symbols: string[]) {
-    const tickers = symbols.map(s => (s.includes(".") || s.startsWith("^")) ? s : `${s}.NS`);
-    const map: Record<string, { price: number, volume: number }> = {};
+    // Replaced Yahoo with generic API per user instruction
+    const apiUrl = process.env.REALTIME_API_URL;
     
-    // Batch quotes to avoid Yahoo rate limits or blocking
-    const BATCH_SIZE = 50;
+    if (!apiUrl) {
+      console.warn("[API] REALTIME_API_URL is missing. Please add the given API URL to your environment secrets.");
+      return {};
+    }
+
     try {
-      for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
-        const batchTickers = tickers.slice(i, i + BATCH_SIZE);
-        const quotes: any[] = await yahooFinance.quote(batchTickers, {}, { validateResult: false });
-        
-        quotes.forEach(q => {
-          const sym = q.symbol.replace(".NS", "").replace(".BO", "");
-          map[sym] = {
-            price: q.regularMarketPrice || q.price || 0,
-            volume: q.regularMarketVolume || q.volume || 0
-          };
-        });
-        
-        if (i + BATCH_SIZE < tickers.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbols })
+      });
+      
+      if (!response.ok) {
+         throw new Error(`API responded with status: ${response.status}`);
       }
-      return map;
+
+      const data = await response.json();
+      return data.quotes || data.data || data; 
     } catch (e: any) {
-      console.error(`[YAHOO] Batch quote failed: ${e.message}`);
-      return map;
+      console.error(`[API] Real-time fetch failed: ${e.message}`);
+      return {};
     }
   }
 
   static async getCurrentPrice(symbol: string) {
-    const ticker = (symbol.includes(".") || symbol.startsWith("^")) ? symbol : `${symbol}.NS`;
-    const quote: any = await yahooFinance.quote(ticker, {}, { validateResult: false });
-    return {
-      price: quote.regularMarketPrice || quote.price || 0,
-      volume: quote.regularMarketVolume || quote.volume || 0
-    };
+    const data = await this.getCurrentPrices([symbol]);
+    return data[symbol] || { price: 0, volume: 0 };
   }
 }

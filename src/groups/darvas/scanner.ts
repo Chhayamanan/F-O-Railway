@@ -30,11 +30,6 @@ export class DarvasScanner {
     LoggerService.log(`[SCANNER] Fetching live quotes for ${symbols.length} symbols...`);
     let liveQuotes = await MstockService.getCurrentPrices(symbols);
 
-    if (Object.keys(liveQuotes).length === 0 && symbols.length > 0) {
-      LoggerService.log(`[SCANNER] WARNING: Mstock returned 0 live quotes. Falling back to Yahoo Finance...`);
-      liveQuotes = await YahooService.getCurrentPrices(symbols);
-    }
-
     // Pre-fetch Nifty 50 data for comparison (Historical)
     const niftyData = await DataKeeper.getData("^NSEI");
     if (!niftyData) {

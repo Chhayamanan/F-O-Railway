@@ -17,10 +17,6 @@ export class DarvasValidator {
     try {
       const symbols = stocks.map(s => s.symbol);
       let liveQuotes = await MstockService.getCurrentPrices(symbols);
-      
-      if (Object.keys(liveQuotes).length === 0 && symbols.length > 0) {
-         liveQuotes = await YahooService.getCurrentPrices(symbols);
-      }
 
       for (const stock of stocks) {
         const live = liveQuotes[stock.symbol];

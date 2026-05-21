@@ -20,10 +20,6 @@ export class VolumeSpikeScanner {
     
     // Fetch live quotes for current price and today's stats if possible
     let liveQuotes = await MstockService.getCurrentPrices(symbols);
-    
-    if (Object.keys(liveQuotes).length === 0 && symbols.length > 0) {
-       liveQuotes = await YahooService.getCurrentPrices(symbols);
-    }
 
     for (const symbol of symbols) {
       try {
