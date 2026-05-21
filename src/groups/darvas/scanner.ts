@@ -104,7 +104,7 @@ export class DarvasScanner {
 
         // Relative Strength Analysis (Step 3) - Omitted since RSAgent was removed.
         candidate.rsNifty = { rpi90: 0, rpi60: 0, rpi30: 0, rpi10: 0 };
-        candidate.rsIndex = { rpi90: 0, rpi60: 0, rpi30: 0, rpi10: 0, indexSymbol: getBenchmarkIndex(symbol) };
+        candidate.rsIndex = { rpi90: 0, rpi60: 0, rpi30: 0, rpi10: 0, benchSymbol: getBenchmarkIndex(symbol) };
 
         if (!options.rsTrendOnly) {
           candidates.push(candidate);

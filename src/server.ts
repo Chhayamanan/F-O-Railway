@@ -337,25 +337,69 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+  const distPath = path.join(process.cwd(), 'dist');
+  app.use(express.static(distPath));
+
+  // 1. Bind the port IMMEDIATELY so Railway sees a healthy, running green light
+  app.listen(PORT, '0.0.0.0', async () => {
+    console.log(`[SYSTEM] Server successfully bound to port ${PORT}. Railway check passed.`);
+
+    // Set up Vite dev server if not in production and wait for it
+    if (process.env.NODE_ENV !== "production") {
+      try {
+        const { createServer: createViteServer } = await import("vite");
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: "spa",
+        });
+        app.use(vite.middlewares);
+      } catch (err) {
+        console.error("Failed to start Vite dev server:", err);
+      }
+    }
+
+    // SPA fallback route MUST GO AFTER Vite middlewares
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
-  }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    
+    // 2. Wrap your 1-minute scanner inside a safe initialization delay
+    setTimeout(() => {
+        console.log("[SYSTEM] Initializing 1-minute Darvas Box scheduler...");
+        
+        let isScanRunning = false;
+        
+        // Use a safe interval that catches its own errors so it never kills the server
+        setInterval(async () => {
+            if (isScanRunning) return; // Prevent overlapping scans
+            isScanRunning = true;
+            try {
+                console.log("[SCANNER] Running 1m automatic market scan / sync...");
+                await runDarvasBoxScanner(); 
+            } catch (scanError: any) {
+                // Capturing the error stops the 502 / SIGTERM app crashes completely!
+                console.error("[SCANNER ERROR] Scan execution failed, skipping this minute:", scanError.message);
+            } finally {
+                isScanRunning = false;
+            }
+        }, 1 * 60 * 1000); // 1-minute loop
+        
+    }, 5000); // Waits 5 seconds after boot before doing any heavy API work
   });
+}
+
+// Background auto-scanner implementation
+async function runDarvasBoxScanner() {
+  try {
+    const isHealthy = await DataKeeper.isCacheHealthy();
+    if (!isHealthy) {
+       console.log("[SCANNER] Cache stale. Running background fetch...");
+       await DataKeeper.fetchAndStore(MARKET_UNIVERSE);
+    }
+    console.log("[SCANNER] 1m autonomous check completed successfully.");
+  } catch (error: any) {
+    throw new Error(`Auto-scan failed: ${error.message}`);
+  }
 }
 
 startServer();
