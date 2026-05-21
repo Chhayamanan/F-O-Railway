@@ -220,16 +220,16 @@ export default function App() {
           });
         }
         if (data.signals && data.signals.length > 0) {
-          const prevTrades = resultsRef.current?.darvas?.executedTrades || [];
-          const newTrades = data.executedTrades || [];
-          const combinedTrades = [...prevTrades];
-          newTrades.forEach((newT: any) => {
-            if (!combinedTrades.some(t => t.symbol === newT.symbol)) {
-              combinedTrades.push(newT);
-              addLog(`TRADE EXECUTED: ${newT.symbol} at ₹${newT.entry}`);
+          const prevPending = resultsRef.current?.darvas?.pendingTrades || [];
+          const newPending = data.pendingTrades || [];
+          const combinedPending = [...prevPending];
+          newPending.forEach((newT: any) => {
+            if (!combinedPending.some(t => t.signal.symbol === newT.signal.symbol)) {
+              combinedPending.push(newT);
+              addLog(`PENDING APPROVAL: ${newT.signal.symbol} requires ₹${newT.fundRequired.toFixed(2)}`);
             }
           });
-          data.executedTrades = combinedTrades;
+          data.pendingTrades = combinedPending;
         }
 
         const mappedResults = {
@@ -237,7 +237,8 @@ export default function App() {
           darvas: {
             candidates: data.candidates || [],
             signals: data.signals || [],
-            executedTrades: data.executedTrades || [],
+            pendingTrades: data.pendingTrades || [],
+            executedTrades: resultsRef.current?.darvas?.executedTrades || [],
             rejections: data.rejections || []
           },
           rsTrend: resultsRef.current?.rsTrend || { candidates: [] },
@@ -336,6 +337,7 @@ export default function App() {
           darvas: {
             candidates: data.candidates || [],
             signals: data.signals || [],
+            pendingTrades: data.pendingTrades || [],
             executedTrades: data.executedTrades || [],
             rejections: data.rejections || []
           },
@@ -528,6 +530,53 @@ export default function App() {
       setNews({ text: "Failed to retrieve news at this moment.", links: [] });
     } finally {
       setIsFetchingNews(false);
+    }
+  };
+
+  // Process CEO approval
+  const approveTrades = async (approvedSignals: any[]) => {
+    addLog(`Approving ${approvedSignals.length} trades for execution...`);
+    try {
+      const response = await fetch('/api/approve-trades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvedSignals })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        if (data.executedTrades && data.executedTrades.length > 0) {
+          data.executedTrades.forEach((trade: any) => {
+            addLog(`TRADE EXECUTED: ${trade.symbol} at ₹${trade.entry}`);
+          });
+        }
+        if (data.executionErrors && data.executionErrors.length > 0) {
+          data.executionErrors.forEach((err: any) => {
+             addLog(`Execution Failed: ${err.symbol} - ${err.reason}`);
+          });
+        }
+        
+        // Remove approved from pending list, add to executed list
+        setResults((prev: any) => {
+           if (!prev || !prev.darvas) return prev;
+           return {
+             ...prev,
+             darvas: {
+               ...prev.darvas,
+               pendingTrades: prev.darvas.pendingTrades.filter((p: any) => 
+                 !approvedSignals.some((a) => a.signal.symbol === p.signal.symbol)
+               ),
+               executedTrades: [...(prev.darvas.executedTrades || []), ...(data.executedTrades || [])]
+             }
+           };
+        });
+        
+      } else {
+        addLog(`Approval request failed: ${data.error}`);
+      }
+    } catch (err) {
+      addLog(`Approval network error: ${err}`);
+      console.error(err);
     }
   };
 
@@ -925,11 +974,48 @@ export default function App() {
                             onClick={() => setActiveDetail('signals')}
                           />
                           <SummaryMetric 
+                            label="Pending Approvals" 
+                            value={results.darvas.pendingTrades?.length || 0} 
+                            sub="Requires CEO Approval" 
+                          />
+                          <SummaryMetric 
                             label="Executions" 
                             value={results.darvas.executedTrades?.length || 0} 
                             sub="Orders" 
                           />
                         </div>
+
+                        {/* Pending Approvals */}
+                        {results.darvas.pendingTrades?.length > 0 && (
+                          <section>
+                            <div className="flex items-center justify-between mb-4 px-1">
+                              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Pending CEO Approval</h3>
+                              <button
+                                onClick={() => approveTrades(results.darvas.pendingTrades)}
+                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-md active:scale-95 transition-transform"
+                              >
+                                Approve All
+                              </button>
+                            </div>
+                            <div className="space-y-3">
+                              {results.darvas.pendingTrades.map((pending: any, i: number) => (
+                                <div key={i} className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl flex items-center justify-between">
+                                  <div>
+                                    <h4 className="font-bold text-amber-400">{pending.signal.symbol}</h4>
+                                    <p className="text-[10px] text-zinc-400 mt-0.5">Quantity: <span className="font-bold text-zinc-200">{pending.quantity}</span> @ ₹{pending.signal.entry.toFixed(2)}</p>
+                                    <p className="text-[10px] text-emerald-400 mt-0.5 font-bold">Total Fund Required: ₹{pending.fundRequired.toFixed(2)}</p>
+                                  </div>
+                                  <button
+                                    onClick={() => approveTrades([pending])}
+                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-500/20"
+                                  >
+                                    Approve
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </section>
+                        )}
 
                         {/* Executions log */}
                         {results.darvas.executedTrades?.length > 0 && (

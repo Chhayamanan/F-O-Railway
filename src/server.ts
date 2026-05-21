@@ -5,7 +5,6 @@ process.env.no_proxy = "*";
 import "dotenv/config";
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { RAW_UNIVERSE, MARKET_UNIVERSE, INDICES } from "./services/marketDataService";
 import { DarvasScanner } from "./groups/darvas/scanner";
 import { DarvasValidator } from "./groups/darvas/validator";
@@ -112,7 +111,7 @@ async function startServer() {
       const darvasCandidates = await DarvasScanner.scan(targetUniverse, { volumeMultiplier: multiplier });
       const { signals: darvasSignals, liveMetrics: darvasLiveMetrics } = await DarvasValidator.validate(darvasCandidates, multiplier);
       
-      const darvasTrades = [];
+      const pendingTrades = [];
       const rejections: any[] = [];
       for (const signal of darvasSignals) {
         const authenticated = await DarvasAuthenticator.authenticate(signal, multiplier);
@@ -127,14 +126,11 @@ async function startServer() {
           continue;
         }
         
-        try {
-          const trade = await DarvasExecuter.execute(signal.symbol, signal.entry);
-          if (trade) {
-            darvasTrades.push(trade);
-          }
-        } catch (e: any) {
-          rejections.push({ symbol: signal.symbol, reason: e.message || 'Broker execution failed' });
-        }
+        pendingTrades.push({
+          signal: authenticated.signal,
+          quantity: reviewed.quantity,
+          fundRequired: reviewed.fundRequired
+        });
       }
       
       const rsTrendCandidates = await DarvasScanner.scan(RAW_UNIVERSE, { rsTrendOnly: true });
@@ -147,7 +143,7 @@ async function startServer() {
       
       res.json({
         success: true,
-        darvas: { candidates: darvasCandidates, signals: darvasSignals, executedTrades: darvasTrades, rejections },
+        darvas: { candidates: darvasCandidates, signals: darvasSignals, pendingTrades, rejections },
         rsTrend: { candidates: rsTrendCandidates },
         custom: { candidates: customCandidates },
         liveMetrics: combinedLiveMetrics
@@ -173,7 +169,7 @@ async function startServer() {
       // STEP 2: VALIDATOR
       const { signals, liveMetrics } = await DarvasValidator.validate(candidates, multiplier);
       
-      const executedTrades = [];
+      const pendingTrades = [];
       const rejections: any[] = [];
 
       for (const signal of signals) {
@@ -191,15 +187,11 @@ async function startServer() {
           continue;
         }
 
-        // STEP 5: EXECUTER
-        try {
-          const trade = await DarvasExecuter.execute(signal.symbol, signal.entry);
-          if (trade) {
-            executedTrades.push(trade);
-          }
-        } catch (e: any) {
-          rejections.push({ symbol: signal.symbol, reason: e.message || 'Broker execution failed' });
-        }
+        pendingTrades.push({
+          signal: authenticated.signal,
+          quantity: reviewed.quantity,
+          fundRequired: reviewed.fundRequired
+        });
       }
 
       res.json({
@@ -207,7 +199,7 @@ async function startServer() {
         candidates,
         signals,
         liveMetrics,
-        executedTrades,
+        pendingTrades,
         rejections,
         config: { ...SETTINGS, VOLUME_MULTIPLIER: multiplier }
       });
@@ -288,12 +280,36 @@ async function startServer() {
     }
   });
 
+  app.post("/api/approve-trades", async (req, res) => {
+    try {
+      const { approvedSignals } = req.body;
+      const executedTrades = [];
+      const executionErrors: any[] = [];
+      
+      for (const pending of approvedSignals) {
+        try {
+          // STEP 5: EXECUTER (triggered manually by CEO)
+          const trade = await DarvasExecuter.execute(pending.signal.symbol, pending.signal.entry);
+          if (trade) {
+            executedTrades.push(trade);
+          }
+        } catch (e: any) {
+          executionErrors.push({ symbol: pending.signal.symbol, reason: e.message || 'Broker execution failed' });
+        }
+      }
+      
+      res.json({ success: true, executedTrades, executionErrors });
+    } catch (error) {
+       res.status(500).json({ success: false, error: String(error) });
+    }
+  });
+
   app.post("/api/re-validate", async (req, res) => {
     try {
       const { candidates, multiplier } = req.body;
       const result = await DarvasValidator.validate(candidates, multiplier);
       
-      const executedTrades = [];
+      const pendingTrades = [];
       const rejections: any[] = [];
       for (const signal of result.signals) {
         const authenticated = await DarvasAuthenticator.authenticate(signal, multiplier);
@@ -308,17 +324,14 @@ async function startServer() {
           continue;
         }
 
-        try {
-          const trade = await DarvasExecuter.execute(signal.symbol, signal.entry);
-          if (trade) {
-            executedTrades.push(trade);
-          }
-        } catch (e: any) {
-          rejections.push({ symbol: signal.symbol, reason: e.message || 'Broker execution failed' });
-        }
+        pendingTrades.push({
+          signal: authenticated.signal,
+          quantity: reviewed.quantity,
+          fundRequired: reviewed.fundRequired
+        });
       }
 
-      res.json({ success: true, ...result, executedTrades, rejections });
+      res.json({ success: true, ...result, pendingTrades, rejections });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }
@@ -326,6 +339,7 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
