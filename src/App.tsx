@@ -32,7 +32,7 @@ export default function App() {
   const [volumeFilter, setVolumeFilter] = useState<number>(0);
   const [volMultiplier, setVolMultiplier] = useState<number>(4);
   const [spikeFactor, setSpikeFactor] = useState<number>(3);
-  const [activeTab, setActiveTab] = useState<'darvas' | 'rsTrend' | 'custom' | 'spike'>('darvas');
+  const [activeTab, setActiveTab] = useState<'darvas' | 'rsTrend' | 'custom' | 'spike' | 'pending'>('darvas');
   const [activeScan, setActiveScan] = useState<'darvas' | 'all' | null>(null);
   const [countdown, setCountdown] = useState<number>(20);
   const [portfolio, setPortfolio] = useState<any>(null);
@@ -48,6 +48,8 @@ export default function App() {
   const [otpInput, setOtpInput] = useState('');
   const [mstockAuthState, setMstockAuthState] = useState<'idle' | 'awaiting_otp' | 'logged_in'>('idle');
   const [mstockAuthError, setMstockAuthError] = useState<string | null>(null);
+  const [ceoTradeActions, setCeoTradeActions] = useState<Record<string, 'BUY' | 'SELL' | 'SKIP'>>({});
+  const [expandedSignals, setExpandedSignals] = useState<Record<string, boolean>>({});
 
   const exportToCSV = () => {
     if (!results) return;
@@ -540,20 +542,41 @@ export default function App() {
   };
 
   // Process CEO approval
-  const approveTrades = async (approvedSignals: any[]) => {
-    addLog(`Approving ${approvedSignals.length} trades for execution...`);
+  const approveFutureTrade = async (pending: any, direction: 'BUY' | 'SELL' | 'SKIP') => {
+    setCeoTradeActions(prev => ({ ...prev, [pending.signal.symbol]: direction }));
+    
+    if (direction === 'SKIP') {
+      addLog(`SIGNAL SKIPPED: ${pending.signal.symbol}`);
+      setTimeout(() => {
+        setResults((prev: any) => {
+           if (!prev || !prev.darvas) return prev;
+           return {
+             ...prev,
+             darvas: {
+               ...prev.darvas,
+               pendingTrades: prev.darvas.pendingTrades.filter((p: any) => 
+                 p.signal.symbol !== pending.signal.symbol
+               )
+             }
+           };
+        });
+      }, 1500); // 1.5s delay to show the locked status
+      return;
+    }
+
+    addLog(`Authorizing ${direction} FUTURES order for ${pending.signal.symbol}...`);
     try {
       const response = await fetch('/api/approve-trades', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approvedSignals })
+        body: JSON.stringify({ approvedSignals: [pending] })
       });
       const data = await response.json();
       
       if (data.success) {
         if (data.executedTrades && data.executedTrades.length > 0) {
           data.executedTrades.forEach((trade: any) => {
-            addLog(`TRADE EXECUTED: ${trade.symbol} at ₹${trade.entry}`);
+            addLog(`FUTURES EXECUTED [${direction}]: ${trade.symbol} at ₹${trade.entry}`);
           });
         }
         if (data.executionErrors && data.executionErrors.length > 0) {
@@ -562,20 +585,21 @@ export default function App() {
           });
         }
         
-        // Remove approved from pending list, add to executed list
-        setResults((prev: any) => {
-           if (!prev || !prev.darvas) return prev;
-           return {
-             ...prev,
-             darvas: {
-               ...prev.darvas,
-               pendingTrades: prev.darvas.pendingTrades.filter((p: any) => 
-                 !approvedSignals.some((a) => a.signal.symbol === p.signal.symbol)
-               ),
-               executedTrades: [...(prev.darvas.executedTrades || []), ...(data.executedTrades || [])]
-             }
-           };
-        });
+        setTimeout(() => {
+          setResults((prev: any) => {
+             if (!prev || !prev.darvas) return prev;
+             return {
+               ...prev,
+               darvas: {
+                 ...prev.darvas,
+                 pendingTrades: prev.darvas.pendingTrades.filter((p: any) => 
+                   p.signal.symbol !== pending.signal.symbol
+                 ),
+                 executedTrades: [...(prev.darvas.executedTrades || []), ...(data.executedTrades || [])]
+               }
+             };
+          });
+        }, 1500); // delay to show locked signal card
         
       } else {
         addLog(`Approval request failed: ${data.error}`);
@@ -584,6 +608,10 @@ export default function App() {
       addLog(`Approval network error: ${err}`);
       console.error(err);
     }
+  };
+
+  const toggleSignalExpand = (symbol: string) => {
+    setExpandedSignals(prev => ({ ...prev, [symbol]: !prev[symbol] }));
   };
 
   const onCompanyClick = (symbol: string) => {
@@ -836,13 +864,18 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => setActiveTab('pending')}
-                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                       activeTab === 'pending'
                         ? 'bg-orange-600 text-white shadow-md'
                         : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
                     }`}
                   >
                     CEO Desk
+                    {results?.darvas?.pendingTrades?.length > 0 && (
+                      <span className="bg-emerald-500 text-zinc-900 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                        {results.darvas.pendingTrades.length}
+                      </span>
+                    )}
                   </button>
                   <button
                     onClick={() => setActiveTab('rsTrend')}
@@ -990,9 +1023,10 @@ export default function App() {
                             onClick={() => setActiveDetail('signals')}
                           />
                           <SummaryMetric 
-                            label="Pending Approvals" 
+                            label="CEO Desk" 
                             value={results.darvas.pendingTrades?.length || 0} 
-                            sub="Requires CEO Approval" 
+                            sub="Requires Action" 
+                            onClick={() => setActiveTab('pending')}
                           />
                           <SummaryMetric 
                             label="Executions" 
@@ -1383,47 +1417,106 @@ export default function App() {
                         <section>
                           <div className="flex items-center justify-between mb-4 mt-6 px-1">
                             <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Requires Your Authorization</h3>
-                            <button
-                              onClick={() => approveTrades(results.darvas.pendingTrades)}
-                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-md active:scale-95 transition-transform"
-                            >
-                              Approve All
-                            </button>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {results.darvas.pendingTrades.map((pending: any, i: number) => (
-                              <div key={i} className="bg-amber-500/10 border border-amber-500/30 p-5 rounded-xl flex flex-col gap-4">
-                                <div className="flex items-start justify-between">
-                                  <div>
-                                    <h4 className="font-bold text-amber-400 text-xl">{pending.signal.symbol}</h4>
-                                    <p className="text-[10px] text-zinc-400 mt-0.5">Automated signal detected.</p>
+                            {results.darvas.pendingTrades.map((pending: any, i: number) => {
+                              const action = ceoTradeActions[pending.signal.symbol];
+                              const isExpanded = expandedSignals[pending.signal.symbol];
+                              const isLocked = !!action;
+                              
+                              let cardStyle = "bg-amber-500/10 border-amber-500/30";
+                              let badgeStyle = "bg-amber-500/20 text-amber-500";
+                              let badgeText = "PENDING";
+                              
+                              if (action === 'BUY') {
+                                cardStyle = "bg-emerald-500/10 border-emerald-500/30";
+                                badgeStyle = "bg-emerald-500/20 text-emerald-400";
+                                badgeText = "✓ BUY FUTURES ORDER SENT";
+                              } else if (action === 'SELL') {
+                                cardStyle = "bg-red-500/10 border-red-500/30";
+                                badgeStyle = "bg-red-500/20 text-red-400";
+                                badgeText = "✓ SELL FUTURES ORDER SENT";
+                              } else if (action === 'SKIP') {
+                                cardStyle = "bg-zinc-800/20 border-zinc-700/50 opacity-60";
+                                badgeStyle = "bg-zinc-800/50 text-zinc-400";
+                                badgeText = "— SIGNAL SKIPPED";
+                              }
+
+                              return (
+                                <div key={i} className={`border p-5 rounded-xl flex flex-col gap-4 transition-colors ${cardStyle}`}>
+                                  <div 
+                                    className="flex items-start justify-between cursor-pointer"
+                                    onClick={() => toggleSignalExpand(pending.signal.symbol)}
+                                  >
+                                    <div>
+                                      <h4 className="font-bold text-white text-xl">{pending.signal.symbol} <span className="text-sm font-mono tracking-widest ml-1 text-zinc-500">{pending.signal.volumeFactor}x VOL</span></h4>
+                                      <p className="text-[10px] text-zinc-400 mt-1 flex items-center gap-2">
+                                        <span>EST. PR: ₹{pending.signal.entry.toFixed(2)}</span>
+                                        <span>•</span>
+                                        <span>QTY: {pending.quantity}</span>
+                                        <span>•</span>
+                                        <span>FUND: ₹{pending.fundRequired.toFixed(2)}</span>
+                                      </p>
+                                    </div>
+                                    <div className={`px-2 py-1 text-[10px] font-bold rounded ${badgeStyle}`}>
+                                      {badgeText}
+                                    </div>
                                   </div>
-                                  <div className="px-2 py-1 bg-amber-500/20 text-amber-500 text-[10px] font-bold rounded">
-                                    PENDING
-                                  </div>
+
+                                  {isExpanded && !isLocked && (
+                                    <div className="pt-2 border-t border-zinc-800/50 mt-2 space-y-4">
+                                      <div className="grid grid-cols-2 gap-4 bg-black/40 p-4 rounded-lg border border-zinc-800/50">
+                                         <div>
+                                            <p className="text-[10px] text-zinc-500 uppercase">Breakout Level</p>
+                                            <p className="font-bold text-zinc-300">₹{pending.signal.boxTop.toFixed(2)}</p>
+                                         </div>
+                                         <div>
+                                            <p className="text-[10px] text-zinc-500 uppercase">Live Entry Price</p>
+                                            <p className="font-bold text-emerald-400">₹{pending.signal.entry.toFixed(2)}</p>
+                                         </div>
+                                         <div>
+                                            <p className="text-[10px] text-zinc-500 uppercase">Volume Surge</p>
+                                            <p className="font-bold text-indigo-400">{pending.signal.volumeFactor}x vs average</p>
+                                         </div>
+                                         <div>
+                                            <p className="text-[10px] text-zinc-500 uppercase">Risk / Dist-High</p>
+                                            <p className="font-bold text-zinc-300">{pending.signal.distFromHigh.toFixed(2)}%</p>
+                                         </div>
+                                         <div className="col-span-2 pt-2 border-t border-zinc-800/50">
+                                            <p className="text-[10px] text-zinc-500 uppercase flex justify-between">
+                                                <span>Fund Required (Margin ~50%)</span>
+                                                <span className="font-bold text-emerald-400">₹{pending.fundRequired.toFixed(2)}</span>
+                                            </p>
+                                         </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {!isLocked && (
+                                    <div className="grid grid-cols-3 gap-2 mt-2">
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); approveFutureTrade(pending, 'BUY'); }}
+                                        className="py-2 bg-emerald-600/20 border border-emerald-500/50 hover:bg-emerald-600 text-emerald-400 hover:text-white rounded-lg text-[11px] font-bold shadow-md shadow-emerald-500/20 active:scale-95 transition-all text-center"
+                                      >
+                                        BUY FUTURE
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); approveFutureTrade(pending, 'SELL'); }}
+                                        className="py-2 bg-red-600/20 border border-red-500/50 hover:bg-red-600 text-red-400 hover:text-white rounded-lg text-[11px] font-bold shadow-md shadow-red-500/20 active:scale-95 transition-all text-center"
+                                      >
+                                        SELL FUTURE
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); approveFutureTrade(pending, 'SKIP'); }}
+                                        className="py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg text-[11px] font-bold shadow-md active:scale-95 transition-all text-center"
+                                      >
+                                        SKIP
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 bg-black/40 p-3 rounded-lg border border-zinc-800/50">
-                                  <div>
-                                    <p className="text-[10px] text-zinc-500 uppercase">Quantity</p>
-                                    <p className="font-bold text-zinc-200">{pending.quantity}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[10px] text-zinc-500 uppercase">Est. Price</p>
-                                    <p className="font-bold text-zinc-200">₹{pending.signal.entry.toFixed(2)}</p>
-                                  </div>
-                                  <div className="col-span-2 mt-2 pt-2 border-t border-zinc-800/50">
-                                    <p className="text-[10px] text-zinc-500 uppercase">Fund Required</p>
-                                    <p className="font-bold text-emerald-400">₹{pending.fundRequired.toFixed(2)}</p>
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() => approveTrades([pending])}
-                                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold shadow-md shadow-emerald-500/20 active:scale-95 transition-all mt-2"
-                                >
-                                  Authorize Trade
-                                </button>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </section>
                       ) : (
