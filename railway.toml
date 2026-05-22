@@ -1,0 +1,9 @@
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "npm start"
+
+[env]
+NIXPACKS_NODE_VERSION = "22"
+NODE_VERSION = "22"
