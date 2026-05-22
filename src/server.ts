@@ -19,7 +19,12 @@ import { VolumeSpikeScanner } from "./groups/darvas/volumeSpikeScanner";
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  
+  // App routing and deployments conflict resolution:
+  // AI Studio (Cloud Run) proxy strictly routes to 3000, even though PORT env var might be 8080.
+  // Railway provides process.env.PORT or user fallback to 3001 (based on your request).
+  const isAIStudio = !!process.env.APPLET_ID;
+  const PORT = isAIStudio ? 3000 : (Number(process.env.PORT) || 3001);
 
   app.use(express.json());
 
@@ -337,33 +342,30 @@ async function startServer() {
     }
   });
 
-  const distPath = path.join(process.cwd(), 'dist');
-  app.use(express.static(distPath));
-
-  // 1. Bind the port IMMEDIATELY so Railway sees a healthy, running green light
-  app.listen(PORT, '0.0.0.0', async () => {
-    console.log(`[SYSTEM] Server successfully bound to port ${PORT}. Railway check passed.`);
-
-    // Set up Vite dev server if not in production and wait for it
-    if (process.env.NODE_ENV !== "production") {
-      try {
-        const { createServer: createViteServer } = await import("vite");
-        const vite = await createViteServer({
-          server: { middlewareMode: true },
-          appType: "spa",
-        });
-        app.use(vite.middlewares);
-      } catch (err) {
-        console.error("Failed to start Vite dev server:", err);
-      }
+  // Vite middleware and SPA fallback MUST be added before app.listen
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (err) {
+      console.error("Failed to start Vite dev server:", err);
     }
-
-    // SPA fallback route MUST GO AFTER Vite middlewares
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[SYSTEM] Server successfully bound to port ${PORT}. Railway check passed.`);
     
-    // 2. Wrap your 1-minute scanner inside a safe initialization delay
+    // Wrap your 1-minute scanner inside a safe initialization delay
     setTimeout(() => {
         console.log("[SYSTEM] Initializing 1-minute Darvas Box scheduler...");
         
