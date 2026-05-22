@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import { 
   Play, 
   Activity, 
@@ -514,23 +513,11 @@ export default function App() {
     addLog(`News Agent: Searching for real-time news for ${symbol} in last 2 hours...`);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Search for very recent (last 2 hours) news for the stock symbol ${symbol} and the company it represents in the Indian stock market. Summarize the most important news. If no news is found in the last 2 hours, look for the most recent major news today. Keep it concise.`,
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
-      });
+      const response = await fetch('/api/news?symbol=' + encodeURIComponent(symbol));
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error);
 
-      const text = response.text || "No recent news found for this company.";
-      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-      const links = chunks?.map((chunk: any) => ({
-        uri: chunk.web?.uri || "",
-        title: chunk.web?.title || "News Link"
-      })).filter((l: any) => l.uri) || [];
-
-      setNews({ text, links });
+      setNews({ text: data.text, links: data.links });
       addLog(`News Agent: News summary retrieved for ${symbol}.`);
     } catch (err) {
       console.error("News Fetch Error:", err);

@@ -5,6 +5,7 @@ process.env.no_proxy = "*";
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import { GoogleGenAI } from "@google/genai";
 import { RAW_UNIVERSE, MARKET_UNIVERSE, INDICES } from "./services/marketDataService";
 import { DarvasScanner } from "./groups/darvas/scanner";
 import { DarvasValidator } from "./groups/darvas/validator";
@@ -59,6 +60,38 @@ async function startServer() {
       res.json({ lastSync, healthy });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // News Endpoint using Gemini Google Search Grounding
+  app.get("/api/news", async (req, res) => {
+    const symbol = req.query.symbol as string;
+    if (!symbol) return res.status(400).json({ success: false, error: "symbol is required" });
+    
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) throw new Error("GEMINI_API_KEY is missing from environment variables.");
+      
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Search for very recent (last 2 hours) news for the stock symbol ${symbol} and the company it represents in the Indian stock market. Summarize the most important news. If no news is found in the last 2 hours, look for the most recent major news today. Keep it concise.`,
+        config: {
+          tools: [{ googleSearch: {} }],
+        },
+      });
+
+      const text = response.text || "No recent news found for this company.";
+      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      const links = chunks?.map((chunk: any) => ({
+        uri: chunk.web?.uri || "",
+        title: chunk.web?.title || "News Link"
+      })).filter((l: any) => l.uri) || [];
+
+      res.json({ success: true, text, links });
+    } catch (error: any) {
+      console.error("News API Error:", error);
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 
