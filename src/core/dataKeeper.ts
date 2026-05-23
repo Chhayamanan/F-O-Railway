@@ -27,7 +27,7 @@ export class DataKeeper {
 
     for (let i = 0; i < uniqueSymbols.length; i++) {
       const symbol = uniqueSymbols[i];
-      let retries = 3;
+      let retries = 1; // Drop to 1 retry to fail fast on Network errors 
       while (retries > 0) {
         try {
           const candles = await YahooService.get90DayData(symbol);
@@ -38,17 +38,16 @@ export class DataKeeper {
           } else {
             console.warn(`[DATA KEEPER] Empty data for ${symbol}, retrying...`);
             retries--;
-            if (retries > 0) await new Promise(resolve => setTimeout(resolve, 2000));
+            if (retries > 0) await new Promise(resolve => setTimeout(resolve, 500));
           }
         } catch (err) {
-          console.error(`[DATA KEEPER] Failed to fetch ${symbol}, retries left ${retries - 1}:`, err);
+          console.error(`[DATA KEEPER] Failed to fetch ${symbol}:`, err);
           retries--;
-           if (retries > 0) await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
       
       // Sleep between requests
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     // Save only once at the end to avoid massive I/O

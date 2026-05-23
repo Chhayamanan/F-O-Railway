@@ -22,10 +22,9 @@ async function startServer() {
   const app = express();
   
   // App routing and deployments conflict resolution:
-  // AI Studio (Cloud Run) proxy strictly routes to 3000, even though PORT env var might be 8080.
-  // Railway provides process.env.PORT or user fallback to 8080.
-  const isAIStudio = !!process.env.APPLET_ID;
-  const PORT = isAIStudio ? 3000 : (Number(process.env.PORT) || 8080);
+  // AI Studio (Cloud Run) proxy strictly routes to 3000.
+  // Railway provides process.env.PORT.
+  const PORT = process.env.PORT || 3000;
 
   app.use(express.json());
 
