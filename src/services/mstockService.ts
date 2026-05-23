@@ -171,8 +171,29 @@ export class MstockService {
   }
 
   private static scripMasterDataMap: Map<string, {token: string; tradingSymbol: string}> | null = null;
+  private static scripMasterFuturesMap: Map<string, {token: string; tradingSymbol: string; expiryStr: string; lotSize: number}[]> | null = null;
 
   static async getSymbolToken(symbol: string, apiKey: string, sessionToken: string): Promise<{token: string; tradingSymbol: string} | null> {
+    await this.initScripMaster(apiKey, sessionToken);
+    return this.scripMasterDataMap?.get(symbol.toUpperCase()) || null;
+  }
+
+  static async getFutureSymbolToken(symbol: string, apiKey: string, sessionToken: string): Promise<{token: string; tradingSymbol: string; lotSize: number} | null> {
+    await this.initScripMaster(apiKey, sessionToken);
+    const futures = this.scripMasterFuturesMap?.get(symbol.toUpperCase()) || [];
+    if (futures.length === 0) return null;
+    
+    // Sort by expiry (assuming format like 28Jul2026 => parse it)
+    const sorted = [...futures].sort((a, b) => {
+        const d1 = new Date(a.expiryStr).getTime();
+        const d2 = new Date(b.expiryStr).getTime();
+        return (d1 || Infinity) - (d2 || Infinity);
+    });
+    
+    return sorted[0];
+  }
+
+  private static async initScripMaster(apiKey: string, sessionToken: string) {
     if (!this.scripMasterDataMap) {
       console.log("[MSTOCK] Downloading live master scrip file from m.Stock...");
       const url = "https://api.mstock.trade/openapi/typeb/instruments/OpenAPIScripMaster";
@@ -193,6 +214,10 @@ export class MstockService {
       }
 
       this.scripMasterDataMap = new Map();
+      this.scripMasterFuturesMap = new Map();
+      
+      const now = Date.now();
+
       for (const item of arrayData) {
         const exchSeg = (item.exch_seg || item.exchange || '').toUpperCase();
         const plainSymbol = (item.symbol || '').toUpperCase();
@@ -205,11 +230,26 @@ export class MstockService {
             tradingSymbol: String(item.name)
           });
         }
+        
+        if (exchSeg === 'NFO' && instrType === 'FUTSTK') {
+           const expiryStr = String(item.expiry || '');
+           // Ensure it has not already expired in the past if possible
+           const expDate = new Date(expiryStr).getTime();
+           if (!isNaN(expDate) && expDate > now - 86400000) {
+               if (!this.scripMasterFuturesMap.has(plainSymbol)) {
+                   this.scripMasterFuturesMap.set(plainSymbol, []);
+               }
+               this.scripMasterFuturesMap.get(plainSymbol)!.push({
+                   token: String(item.token),
+                   tradingSymbol: String(item.name),
+                   expiryStr,
+                   lotSize: Number(item.lotsize) || 1
+               });
+           }
+        }
       }
-      console.log(`[MSTOCK] Indexed ${this.scripMasterDataMap.size} NSE Exchange symbols.`);
+      console.log(`[MSTOCK] Indexed ${this.scripMasterDataMap.size} NSE symbols and ${this.scripMasterFuturesMap.size} Futures symbols.`);
     }
-
-    return this.scripMasterDataMap.get(symbol.toUpperCase()) || null;
   }
 
   static async placeOrder(symbol: string, quantity: number = 1, price: number = 0) {
@@ -226,9 +266,9 @@ export class MstockService {
       throw new Error("Mstock Auth Failed. Missing API Key or session is not active. Cannot trade.");
     }
     
-    const symbolInfo = await this.getSymbolToken(symbol, apiKey!, sessionToken);
+    const symbolInfo = await this.getFutureSymbolToken(symbol, apiKey!, sessionToken);
     if (!symbolInfo) {
-       throw new Error(`Symbol token not found for ${symbol}`);
+       throw new Error(`Future symbol token not found for ${symbol}. Market lot and symbol cannot be resolved.`);
     }
 
     const orderUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
@@ -240,24 +280,35 @@ export class MstockService {
       'Content-Type': 'application/json'
     };
 
+    // Ensure quantity is a multiple of lotSize (if called with '1' meaning 1 lot, we multiply it).
+    // Or if the caller passed the raw lotSize, we just ensure it aligns.
+    // E.g. scanEngine passes `item.lotSize`, so let's just assume `quantity` is the actual share quantity.
+    // We will round it to the nearest lot multiple for safety.
+    let finalQuantity = quantity;
+    if (quantity < symbolInfo.lotSize) {
+        finalQuantity = symbolInfo.lotSize;
+    } else {
+        finalQuantity = Math.floor(quantity / symbolInfo.lotSize) * symbolInfo.lotSize;
+    }
+
     try {
       const orderPayload = {
         variety: "NORMAL",
         tradingsymbol: symbolInfo.tradingSymbol,
         symboltoken: symbolInfo.token,
-        exchange: "NSE",
-        transactiontype: "BUY",       // ← was txntype
+        exchange: "NFO",              // ← Important: F&O Market
+        transactiontype: "BUY",       
         ordertype: price > 0 ? "LIMIT" : "MARKET",
-        quantity: quantity.toString(),
-        producttype: "MARGIN",           // ← change from "DELIVERY"
+        quantity: finalQuantity.toString(),
+        producttype: "CARRYFORWARD",  // ← Important: Holding F&O 
         price: price > 0 ? (Math.round(price * 20) / 20).toFixed(2) : "0",
-        triggerprice: "0",            // ← was missing
-        squareoff: "0",               // ← was missing
-        stoploss: "0",                // ← was missing
-        trailingStopLoss: "",         // ← was missing
-        disclosedquantity: "0",        // ← was missing
-        duration: "DAY",              // ← was validity
-        ordertag: ""                  // ← was missing
+        triggerprice: "0",            
+        squareoff: "0",               
+        stoploss: "0",                
+        trailingStopLoss: "",         
+        disclosedquantity: "0",        
+        duration: "DAY",              
+        ordertag: ""                  
       };
 
       console.log(`[BROKER] Placing order — full payload: ${JSON.stringify(orderPayload)}`);
