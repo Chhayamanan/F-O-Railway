@@ -170,6 +170,70 @@ export class MstockService {
     }
   }
 
+  static async getCurrentFuturePrices(symbols: string[]) {
+    try {
+      const apiKey = process.env.MSTOCK_API_KEY;
+      if (!apiKey) return {};
+      
+      const sessionToken = await this.getMstockJwtToken();
+      if (!sessionToken) return {};
+
+      const nfoTokens: string[] = [];
+      const symMap: Record<string, string> = {};
+
+      for (const rawSym of symbols) {
+         const cleanSym = rawSym.replace(".NS", "").replace(".BO", "");
+         const info = await this.getFutureSymbolToken(cleanSym, apiKey, sessionToken);
+         if (info && info.token) {
+             nfoTokens.push(info.token);
+             symMap[info.token] = cleanSym;
+         }
+      }
+
+      if (nfoTokens.length === 0) return {};
+
+      const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
+      const body = {
+          mode: "OHLC",
+          exchangeTokens: {
+              NFO: nfoTokens
+          }
+      };
+
+      const response = await axios({
+          method: 'POST',
+          url: url,
+          headers: {
+              'X-Mirae-Version': '1',
+              'Authorization': `Bearer ${sessionToken}`,
+              'X-PrivateKey': apiKey,
+              'Content-Type': 'application/json'
+          },
+          data: body 
+      });
+
+      const result: Record<string, {price: number, volume: number, lotSize?: number}> = {};
+      
+      if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
+          for (const item of response.data.data.fetched) {
+              const sym = symMap[item.symbolToken];
+              if (sym) {
+                  const info = await this.getFutureSymbolToken(sym, apiKey, sessionToken);
+                  result[sym] = {
+                      price: item.ltp || item.close || 0,
+                      volume: item.volume || item.vtt || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
+                      lotSize: info?.lotSize || 1
+                  };
+              }
+          }
+      }
+      return result;
+    } catch (e: any) {
+      console.error("[MSTOCK] Error fetching live future quotes:", e.message);
+      return {};
+    }
+  }
+
   private static scripMasterDataMap: Map<string, {token: string; tradingSymbol: string}> | null = null;
   private static scripMasterFuturesMap: Map<string, {token: string; tradingSymbol: string; expiryStr: string; lotSize: number}[]> | null = null;
 
@@ -335,6 +399,89 @@ export class MstockService {
       } else {
         console.error("Network Error:", error.message);
         throw new Error(`ERROR: ${error.message || "Unknown error placing order on Mstock"}`);
+      }
+    }
+  }
+
+  static async placeStopLossOrder(symbol: string, quantity: number = 1, triggerPrice: number) {
+    const apiKey = process.env.MSTOCK_API_KEY;
+    
+    let sessionToken = null;
+    try {
+        sessionToken = await this.getMstockJwtToken();
+    } catch (e: any) {
+        throw new Error("Mstock Auth Failed: " + e.message);
+    }
+    
+    if (!apiKey || !sessionToken) {
+      throw new Error("Mstock Auth Failed. Missing API Key or session is not active. Cannot trade.");
+    }
+    
+    const symbolInfo = await this.getFutureSymbolToken(symbol, apiKey!, sessionToken);
+    if (!symbolInfo) {
+       throw new Error(`Future symbol token not found for ${symbol}. Market lot and symbol cannot be resolved.`);
+    }
+
+    const orderUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
+
+    const orderHeaders = {
+      'X-Mirae-Version': '1',
+      'X-PrivateKey': apiKey,
+      'Authorization': `Bearer ${sessionToken}`,
+      'Content-Type': 'application/json'
+    };
+
+    let finalQuantity = quantity;
+    if (quantity < symbolInfo.lotSize) {
+        finalQuantity = symbolInfo.lotSize;
+    } else {
+        finalQuantity = Math.floor(quantity / symbolInfo.lotSize) * symbolInfo.lotSize;
+    }
+
+    try {
+      const orderPayload = {
+        variety: "STOPLOSS",
+        tradingsymbol: symbolInfo.tradingSymbol,
+        symboltoken: symbolInfo.token,
+        exchange: "NFO",
+        transactiontype: "SELL",       
+        ordertype: "STOPLOSS_MARKET",
+        quantity: finalQuantity.toString(),
+        producttype: "CARRYFORWARD",
+        price: "0",
+        triggerprice: (Math.round(triggerPrice * 20) / 20).toFixed(2),            
+        squareoff: "0",               
+        stoploss: "0",                
+        trailingStopLoss: "",         
+        disclosedquantity: "0",        
+        duration: "DAY",              
+        ordertag: ""                  
+      };
+
+      console.log(`[BROKER] Placing SL order — full payload: ${JSON.stringify(orderPayload)}`);
+
+      const response = await axios({
+        method: 'POST',
+        url: orderUrl,
+        headers: orderHeaders,
+        data: orderPayload
+      });
+
+      console.log("[SUCCESS] SL Order Server Accepted Request:", response.data);
+      if (response.data?.status === 'true' || response.data?.status === true || response.data?.status === 'success') {
+        return response.data?.data?.orderid;
+      } else {
+        throw new Error(response.data?.message || "SL Order rejected by broker");
+      }
+    } catch (error: any) {
+      console.error(`[ERROR] SL Order placement failed for ${symbolInfo.tradingSymbol}:`);
+      if (error.response) {
+        console.error(`Status Code: ${error.response.status}`);
+        console.error("Server Message:", error.response.data);
+        throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing SL order on Mstock"}`);
+      } else {
+        console.error("Network Error:", error.message);
+        throw new Error(`ERROR: ${error.message || "Unknown error placing SL order on Mstock"}`);
       }
     }
   }

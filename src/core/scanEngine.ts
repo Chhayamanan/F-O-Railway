@@ -35,6 +35,7 @@ export class ScanEngine {
        
        // live quote from Mstock
        const liveData = await MstockService.getCurrentPrices(chunk);
+       const futureData = await MstockService.getCurrentFuturePrices(chunk);
        
        for (const symbol of chunk) {
          if (this.cancelledItems.has(symbol)) continue; // skip cancelled
@@ -46,17 +47,21 @@ export class ScanEngine {
          const live = liveData[plainSymbol];
          if (!live || live.price === 0) continue;
          
-         const ltp = live.price;
+         const future = futureData[plainSymbol];
+         if (!future || future.price === 0) continue;
+
+         const ltp = future.price;
+         const spotPrice = live.price;
          const latestVolume = live.volume;
          
-         const isCrossHigh = ltp > cached.high90d;
+         const isCrossHigh = spotPrice > cached.high90d;
          const isVol3x = latestVolume >= 3 * cached.avgVol90d;
          
-         const isScanScope = (ltp >= 0.98 * cached.high90d) || (latestVolume >= 2 * cached.avgVol90d) || isCrossHigh;
+         const isScanScope = (spotPrice >= 0.98 * cached.high90d) || (latestVolume >= 2 * cached.avgVol90d) || isCrossHigh;
          const isCeoDesk = isScanScope;
          
          if (isScanScope) {
-            const lotSize = this.MOCK_LOT_SIZES[plainSymbol] || 500; // default proxy 500
+            const lotSize = future.lotSize || this.MOCK_LOT_SIZES[plainSymbol] || 500;
             const contractValue = ltp * lotSize;
             const riskValue = contractValue * 0.05; // 5% stop loss risk
             
@@ -102,8 +107,18 @@ export class ScanEngine {
          try {
              // Buy 1 lot (this implies FNO, but we use the lotSize equity equivalent as proxy due to API instrument limits)
              await MstockService.placeOrder(symbol, item.lotSize || 1, orderPrice);
+             
+             // Place 5% Stop Loss Order
+             const slPrice = item.ltp * 0.95;
+             try {
+                await MstockService.placeStopLossOrder(symbol, item.lotSize || 1, slPrice);
+             } catch (slErr: any) {
+                console.error(`[CEO DESK] Buy succeeded but SL failed for ${symbol}: ${slErr.message}`);
+                // Don't fail the whole block if Buy succeeded, but maybe note it.
+             }
+
              this.ceoDeskItems.splice(index, 1);
-             return { success: true, message: `Placed Buy Order for ${symbol} @ RS ${orderPrice.toFixed(2)}` };
+             return { success: true, message: `Placed Buy Order for ${symbol} @ RS ${orderPrice.toFixed(2)} and SL @ RS ${slPrice.toFixed(2)}` };
          } catch (e: any) {
              console.error(`[CEO DESK] Buy failed for ${symbol}: ${e.message}`);
              return { success: false, message: e.message };
