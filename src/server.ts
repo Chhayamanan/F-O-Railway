@@ -197,7 +197,7 @@ async function startServer() {
 
   app.get("/api/run-manan-system", async (req, res) => {
     try {
-      const multiplier = req.query.multiplier ? parseFloat(req.query.multiplier as string) : SETTINGS.VOLUME_MULTIPLIER;
+      const multiplier = req.query.multiplier ? parseFloat(req.query.multiplier as string) : SETTINGS.VALID_VOLUME_MULTIPLIER;
       
       console.log(`===== STARTING MANAN SIGNAL (Vol Mult: ${multiplier}) =====`);
 

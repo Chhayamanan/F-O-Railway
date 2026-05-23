@@ -29,7 +29,7 @@ export default function App() {
   const [activeDetail, setActiveDetail] = useState<'scope' | 'signals' | null>(null);
   const [positionFilter, setPositionFilter] = useState<number>(0);
   const [volumeFilter, setVolumeFilter] = useState<number>(0);
-  const [volMultiplier, setVolMultiplier] = useState<number>(4);
+  const [volMultiplier, setVolMultiplier] = useState<number>(1.2);
   const [spikeFactor, setSpikeFactor] = useState<number>(3);
   const [activeTab, setActiveTab] = useState<'manan' | 'rsTrend' | 'custom' | 'spike' | 'pending'>('manan');
   const [activeScan, setActiveScan] = useState<'manan' | 'all' | null>(null);
@@ -974,10 +974,10 @@ export default function App() {
                             </div>
                             <div className="flex-1">
                               <div className="flex justify-between items-center">
-                                <h4 className="text-xs font-bold text-indigo-100 uppercase tracking-wider">System Threshold</h4>
+                                <h4 className="text-xs font-bold text-indigo-100 uppercase tracking-wider">Valid Volume Threshold</h4>
                                 <div className="bg-indigo-500 px-2 py-0.5 rounded text-[10px] font-bold text-white">{volMultiplier}x</div>
                               </div>
-                              <p className="text-[9px] text-indigo-300/70">Engine: Volume Multiplier</p>
+                              <p className="text-[9px] text-indigo-300/70">Engine: Valid Signal Volume Multiplier</p>
                             </div>
                           </div>
                           <input 

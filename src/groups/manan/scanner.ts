@@ -73,9 +73,9 @@ export class MananScanner {
           if (dailyChangeMin !== undefined && dailyChange < dailyChangeMin) continue;
           if (dailyChangeMax !== undefined && dailyChange > dailyChangeMax) continue;
         } else if (!options.rsTrendOnly) {
-          // Manan Signal Scan Scope: Crosses 90-day high OR 98% of 90-day high with SETTINGS.SCAN_VOLUME_MULTIPLIER volume
+          // Manan Signal Scan Scope: Crosses 90-day high OR 90% of 90-day high with 1x volume
           const scanVolThreshold = SETTINGS.SCAN_VOLUME_MULTIPLIER;
-          const meetsPrice = currentPrice >= (historicalHigh * 0.98);
+          const meetsPrice = currentPrice >= (historicalHigh * SETTINGS.SCAN_PRICE_PERCENT);
           const meetsVolume = volumeRatio >= scanVolThreshold;
           
           if (!meetsPrice || !meetsVolume) {

@@ -37,9 +37,9 @@ export class MananValidator {
 
         liveMetrics[stock.symbol] = { price: currentPrice, volume: currentVolume, ratio, dailyChange, distFromHigh };
 
-        // Manan Signal validation logic: Crosses high AND volume is 3x (or config threshold)
+        // Manan Signal validation logic: >= 91% of high AND volume is 1.2x (or config threshold)
         const volumeCondition = ratio >= multiplier;
-        const breakoutCondition = currentPrice >= stock.boxHigh;
+        const breakoutCondition = currentPrice >= (stock.boxHigh * SETTINGS.VALID_PRICE_PERCENT);
 
         if (volumeCondition && breakoutCondition) {
           signals.push({
