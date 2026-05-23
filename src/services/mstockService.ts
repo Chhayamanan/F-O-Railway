@@ -170,10 +170,10 @@ export class MstockService {
     }
   }
 
-  private static scripMasterData: any[] | null = null;
+  private static scripMasterDataMap: Map<string, {token: string; tradingSymbol: string}> | null = null;
 
   static async getSymbolToken(symbol: string, apiKey: string, sessionToken: string): Promise<{token: string; tradingSymbol: string} | null> {
-    if (!this.scripMasterData) {
+    if (!this.scripMasterDataMap) {
       console.log("[MSTOCK] Downloading live master scrip file from m.Stock...");
       const url = "https://api.mstock.trade/openapi/typeb/instruments/OpenAPIScripMaster";
       const response = await axios.get(url, {
@@ -183,32 +183,33 @@ export class MstockService {
             "X-PrivateKey": apiKey
         }
       });
+      let arrayData = [];
       if (Array.isArray(response.data)) {
-        this.scripMasterData = response.data;
+        arrayData = response.data;
       } else if (response.data?.data && Array.isArray(response.data.data)) {
-        this.scripMasterData = response.data.data;
+        arrayData = response.data.data;
       } else {
         throw new Error("Invalid scrip master data format");
       }
-    }
 
-    for (const item of this.scripMasterData) {
-        // mStock scrip master fields: token, symbol, name, exch_seg, instrumenttype
+      this.scripMasterDataMap = new Map();
+      for (const item of arrayData) {
         const exchSeg = (item.exch_seg || item.exchange || '').toUpperCase();
-        const plainSymbol = (item.symbol || '').toUpperCase();        // e.g. "RVNL"
-        const tradingName = (item.name || item.symbol || '').toUpperCase(); // e.g. "RVNL-EQ"
+        const plainSymbol = (item.symbol || '').toUpperCase();
+        const tradingName = (item.name || item.symbol || '').toUpperCase();
         const instrType = (item.instrumenttype || '').toUpperCase();
 
-        // Match NSE equity only: exch_seg=NSE, instrumenttype=EQ, symbol=GRASIM
-        if (exchSeg === 'NSE' && instrType === 'EQ' && plainSymbol === symbol.toUpperCase()) {
-            console.log(`[MSTOCK] Found scrip: symbol=${item.symbol}, name=${item.name}, token=${item.token}`);
-            return {
-                token: String(item.token),
-                tradingSymbol: String(item.name)   // "GRASIM-EQ" — what order API expects
-            };
+        if (exchSeg === 'NSE' && instrType === 'EQ') {
+          this.scripMasterDataMap.set(plainSymbol, {
+            token: String(item.token),
+            tradingSymbol: String(item.name)
+          });
         }
+      }
+      console.log(`[MSTOCK] Indexed ${this.scripMasterDataMap.size} NSE Exchange symbols.`);
     }
-    return null;
+
+    return this.scripMasterDataMap.get(symbol.toUpperCase()) || null;
   }
 
   static async placeOrder(symbol: string, quantity: number = 1, price: number = 0) {
