@@ -3,7 +3,6 @@ process.env.NO_PROXY = "*";
 process.env.no_proxy = "*";
 
 import "dotenv/config";
-console.log("SERVER BOOTING V2...");
 import express from "express";
 import path from "path";
 import { GoogleGenAI } from "@google/genai";
@@ -204,11 +203,9 @@ async function startServer() {
 
       // STEP 1: SCANNER
       const candidates = await MananScanner.scan(RAW_UNIVERSE, { volumeMultiplier: multiplier });
-      console.log(`SCANNER RETURNED ${candidates.length} candidates!`);
       
       // STEP 2: VALIDATOR
       const { signals, liveMetrics } = await MananValidator.validate(candidates, multiplier);
-      console.log(`VALIDATOR RETURNED ${signals.length} signals!`);
       
       const pendingTrades = [];
       const rejections: any[] = [];
@@ -237,7 +234,6 @@ async function startServer() {
 
       res.json({
         success: true,
-        debug: { targetUniverseLength: RAW_UNIVERSE.length, first5: RAW_UNIVERSE.slice(0,5) },
         candidates,
         signals,
         liveMetrics,
