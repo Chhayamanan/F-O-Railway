@@ -1,6 +1,7 @@
 import yahooFinanceLib from 'yahoo-finance2';
 
-const yahooFinance = (yahooFinanceLib as any).default || yahooFinanceLib;
+const YahooFinanceClass = (yahooFinanceLib as any).default || yahooFinanceLib;
+const yahooFinance = new YahooFinanceClass();
 
 export class YahooService {
   static async get90DayData(symbol: string) {
