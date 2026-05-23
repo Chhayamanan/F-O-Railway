@@ -20,10 +20,9 @@ export class MananValidator {
 
       for (const stock of stocks) {
         const live = liveQuotes[stock.symbol];
-        if (!live) continue;
-
-        const currentVolume = live.volume || 0;
-        const currentPrice = live.price || 0;
+        
+        const currentVolume = live ? (live.volume || 0) : (stock.currentVolume || 0);
+        const currentPrice = live ? (live.price || 0) : (stock.currentPrice || 0);
 
         const multiplier = multiplierOverride || Number(SETTINGS.VALID_VOLUME_MULTIPLIER) || 3;
         const avgVol = Number(stock.avgVolume90d) || 0;

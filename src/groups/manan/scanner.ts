@@ -52,18 +52,27 @@ export class MananScanner {
         const historicalHigh = Math.max(...highs);
         const historicalLow = Math.min(...lows);
         const prevClose = closes[closes.length - 1]; // Last cached close
-        
-        // Use LIVE quote instead of last cached candle
+        const prePrevClose = closes.length > 1 ? closes[closes.length - 2] : closes[0]; // For daily change if falling back
         const live = liveQuotes[symbol];
-        if (!live) continue;
         
-        const currentPrice = live.price;
-        const currentVolume = live.volume;
-        const dailyChange = prevClose > 0 ? ((currentPrice - prevClose) / prevClose) * 100 : 0;
+        const currentPrice = live ? live.price : closes[closes.length - 1];
+        const currentVolume = live ? live.volume : volumes[volumes.length - 1];
+        // If live, daily change is against prevClose. If fallback (using latest candle), it's against prePrevClose
+        const referenceClose = live ? prevClose : prePrevClose;
+        const dailyChange = referenceClose > 0 ? ((currentPrice - referenceClose) / referenceClose) * 100 : 0;
         const distFromHigh = historicalHigh > 0 ? Math.max(0, ((historicalHigh - currentPrice) / historicalHigh) * 100) : 0;
         const avgVolume90d = volumes.reduce((a: number, b: number) => a + b, 0) / (volumes.length || 1);
         const volumeRatio = currentVolume / (avgVolume90d || 1);
 
+        if (symbol === 'RELIANCE') {
+          console.log({
+            symbol,
+            currentPrice, historicalHigh, percent: (currentPrice / historicalHigh),
+            currentVolume, avgVolume90d, volumeRatio,
+            meetsPrice: currentPrice >= (historicalHigh * SETTINGS.SCAN_PRICE_PERCENT),
+            meetsVolume: volumeRatio >= SETTINGS.SCAN_VOLUME_MULTIPLIER
+          });
+        }
         // Step 1: Filters (Manan Signal)
         if (options.customFilters) {
           const { volMult, distFromHigh: maxDist, dailyChangeMin, dailyChangeMax } = options.customFilters;
@@ -87,6 +96,14 @@ export class MananScanner {
         let marketCap: 'Large' | 'Mid' | 'Small' = 'Small';
         if (LARGE_CAP_STOCKS.includes(symbol)) marketCap = 'Large';
         else if (MIDCAP_STOCKS.includes(symbol)) marketCap = 'Mid';
+
+        if (symbol === 'RELIANCE.NS') {
+          console.log({
+            symbol,
+            currentPrice, historicalHigh, meetsPrice: currentPrice >= (historicalHigh * SETTINGS.SCAN_PRICE_PERCENT),
+            currentVolume, avgVolume90d, volumeRatio, meetsVolume: volumeRatio >= SETTINGS.SCAN_VOLUME_MULTIPLIER
+          });
+        }
 
         const candidate: StockCandidate = {
           symbol,
