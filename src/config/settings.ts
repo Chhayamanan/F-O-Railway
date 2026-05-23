@@ -3,8 +3,8 @@ export const SETTINGS = {
   BOX_RANGE_LIMIT: 30, // Keeping old props just in case
   POSITION_RANGE_MIN: 25,
   VOLUME_MULTIPLIER: 4, 
-  SCAN_VOLUME_MULTIPLIER: 1,  // Manual threshold for Scan Scope (1x volume)
-  VALID_VOLUME_MULTIPLIER: 1.2, // Manual threshold for Valid Signal (1.2x volume)
+  SCAN_VOLUME_MULTIPLIER: 0.5,  // Manual threshold for Scan Scope (1x volume)
+  VALID_VOLUME_MULTIPLIER: 0.7, // Manual threshold for Valid Signal (1.2x volume)
   SCAN_PRICE_PERCENT: 0.90,   // Scan scope >= 90% of high
   VALID_PRICE_PERCENT: 0.91,  // Valid signal >= 91% of high
   SCAN_PERIOD_DAYS: 90,       // High of last 90 days
