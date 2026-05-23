@@ -1,10 +1,7 @@
 import yahooFinanceLib from 'yahoo-finance2';
 
 const YahooFinanceClass = (yahooFinanceLib as any).default || yahooFinanceLib;
-const yahooFinance = new YahooFinanceClass();
-
-// Setup headers exactly as requested to mimic a real browser
-yahooFinance.setGlobalConfig({
+const yahooFinance = new YahooFinanceClass({
   fetchOptions: {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
