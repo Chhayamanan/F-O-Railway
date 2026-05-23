@@ -7,16 +7,16 @@ import express from "express";
 import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import { RAW_UNIVERSE, MARKET_UNIVERSE, INDICES } from "./services/marketDataService";
-import { DarvasScanner } from "./groups/darvas/scanner";
-import { DarvasValidator } from "./groups/darvas/validator";
-import { DarvasAuthenticator } from "./groups/darvas/authenticator";
+import { MananScanner } from "./groups/manan/scanner";
+import { MananValidator } from "./groups/manan/validator";
+import { MananAuthenticator } from "./groups/manan/authenticator";
 import { TradeConfirmer } from "./core/tradeConfirmer";
-import { DarvasExecuter } from "./groups/darvas/executer";
+import { MananExecuter } from "./groups/manan/executer";
 import { SETTINGS } from "./config/settings";
 import { MstockService } from "./services/mstockService";
 
 import { DataKeeper } from "./core/dataKeeper";
-import { VolumeSpikeScanner } from "./groups/darvas/volumeSpikeScanner";
+import { VolumeSpikeScanner } from "./groups/manan/volumeSpikeScanner";
 
 async function startServer() {
   const app = express();
@@ -146,13 +146,13 @@ async function startServer() {
       
       const targetUniverse = RAW_UNIVERSE.filter(s => !excludeSymbols.includes(s));
       
-      const darvasCandidates = await DarvasScanner.scan(targetUniverse, { volumeMultiplier: multiplier });
-      const { signals: darvasSignals, liveMetrics: darvasLiveMetrics } = await DarvasValidator.validate(darvasCandidates, multiplier);
+      const mananCandidates = await MananScanner.scan(targetUniverse, { volumeMultiplier: multiplier });
+      const { signals: mananSignals, liveMetrics: mananLiveMetrics } = await MananValidator.validate(mananCandidates, multiplier);
       
       const pendingTrades = [];
       const rejections: any[] = [];
-      for (const signal of darvasSignals) {
-        const authenticated = await DarvasAuthenticator.authenticate(signal, multiplier);
+      for (const signal of mananSignals) {
+        const authenticated = await MananAuthenticator.authenticate(signal, multiplier);
         if (!authenticated.authenticated || !authenticated.signal) {
           rejections.push({ symbol: signal.symbol, reason: authenticated.reason || 'Authentication failed' });
           continue;
@@ -171,17 +171,17 @@ async function startServer() {
         });
       }
       
-      const rsTrendCandidates = await DarvasScanner.scan(RAW_UNIVERSE, { rsTrendOnly: true });
-      const { liveMetrics: rsLiveMetrics } = await DarvasValidator.validate(rsTrendCandidates);
+      const rsTrendCandidates = await MananScanner.scan(RAW_UNIVERSE, { rsTrendOnly: true });
+      const { liveMetrics: rsLiveMetrics } = await MananValidator.validate(rsTrendCandidates);
       
-      const customCandidates = await DarvasScanner.scan(RAW_UNIVERSE, { customFilters });
-      const { liveMetrics: customLiveMetrics } = await DarvasValidator.validate(customCandidates);
+      const customCandidates = await MananScanner.scan(RAW_UNIVERSE, { customFilters });
+      const { liveMetrics: customLiveMetrics } = await MananValidator.validate(customCandidates);
 
-      const combinedLiveMetrics = { ...darvasLiveMetrics, ...rsLiveMetrics, ...customLiveMetrics };
+      const combinedLiveMetrics = { ...mananLiveMetrics, ...rsLiveMetrics, ...customLiveMetrics };
       
       res.json({
         success: true,
-        darvas: { candidates: darvasCandidates, signals: darvasSignals, pendingTrades, rejections },
+        manan: { candidates: mananCandidates, signals: mananSignals, pendingTrades, rejections },
         rsTrend: { candidates: rsTrendCandidates },
         custom: { candidates: customCandidates },
         liveMetrics: combinedLiveMetrics
@@ -195,24 +195,24 @@ async function startServer() {
     }
   });
 
-  app.get("/api/run-darvas-system", async (req, res) => {
+  app.get("/api/run-manan-system", async (req, res) => {
     try {
       const multiplier = req.query.multiplier ? parseFloat(req.query.multiplier as string) : SETTINGS.VOLUME_MULTIPLIER;
       
-      console.log(`===== STARTING DARVAS ENGINE (Vol Mult: ${multiplier}) =====`);
+      console.log(`===== STARTING MANAN SIGNAL (Vol Mult: ${multiplier}) =====`);
 
       // STEP 1: SCANNER
-      const candidates = await DarvasScanner.scan(RAW_UNIVERSE, { volumeMultiplier: multiplier });
+      const candidates = await MananScanner.scan(RAW_UNIVERSE, { volumeMultiplier: multiplier });
       
       // STEP 2: VALIDATOR
-      const { signals, liveMetrics } = await DarvasValidator.validate(candidates, multiplier);
+      const { signals, liveMetrics } = await MananValidator.validate(candidates, multiplier);
       
       const pendingTrades = [];
       const rejections: any[] = [];
 
       for (const signal of signals) {
         // STEP 3: AUTHENTICATOR
-        const authenticated = await DarvasAuthenticator.authenticate(signal, multiplier);
+        const authenticated = await MananAuthenticator.authenticate(signal, multiplier);
         if (!authenticated.authenticated || !authenticated.signal) {
           rejections.push({ symbol: signal.symbol, reason: authenticated.reason || 'Authentication failed' });
           continue;
@@ -254,8 +254,8 @@ async function startServer() {
   app.get("/api/run-rs-trend-scan", async (req, res) => {
     try {
       console.log(`===== STARTING RS TREND SCAN (Scan 2) =====`);
-      const candidates = await DarvasScanner.scan(RAW_UNIVERSE, { rsTrendOnly: true });
-      const { liveMetrics } = await DarvasValidator.validate(candidates);
+      const candidates = await MananScanner.scan(RAW_UNIVERSE, { rsTrendOnly: true });
+      const { liveMetrics } = await MananValidator.validate(candidates);
       
       res.json({
         success: true,
@@ -278,8 +278,8 @@ async function startServer() {
     try {
       console.log(`===== STARTING CUSTOM SCAN (Scan 3) =====`);
       const { filters } = req.body;
-      const candidates = await DarvasScanner.scan(RAW_UNIVERSE, { customFilters: filters });
-      const { liveMetrics } = await DarvasValidator.validate(candidates);
+      const candidates = await MananScanner.scan(RAW_UNIVERSE, { customFilters: filters });
+      const { liveMetrics } = await MananValidator.validate(candidates);
       
       res.json({
         success: true,
@@ -327,7 +327,7 @@ async function startServer() {
       for (const pending of approvedSignals) {
         try {
           // STEP 5: EXECUTER (triggered manually by CEO)
-          const trade = await DarvasExecuter.execute(pending.signal.symbol, pending.signal.entry);
+          const trade = await MananExecuter.execute(pending.signal.symbol, pending.signal.entry);
           if (trade) {
             executedTrades.push(trade);
           }
@@ -345,12 +345,12 @@ async function startServer() {
   app.post("/api/re-validate", async (req, res) => {
     try {
       const { candidates, multiplier } = req.body;
-      const result = await DarvasValidator.validate(candidates, multiplier);
+      const result = await MananValidator.validate(candidates, multiplier);
       
       const pendingTrades = [];
       const rejections: any[] = [];
       for (const signal of result.signals) {
-        const authenticated = await DarvasAuthenticator.authenticate(signal, multiplier);
+        const authenticated = await MananAuthenticator.authenticate(signal, multiplier);
         if (!authenticated.authenticated || !authenticated.signal) {
           rejections.push({ symbol: signal.symbol, reason: authenticated.reason || 'Authentication failed' });
           continue;
@@ -400,7 +400,7 @@ async function startServer() {
     
     // Wrap your 1-minute scanner inside a safe initialization delay
     setTimeout(() => {
-        console.log("[SYSTEM] Initializing 1-minute Darvas Box scheduler...");
+        console.log("[SYSTEM] Initializing 1-minute Manan Signal scheduler...");
         
         let isScanRunning = false;
         
@@ -410,7 +410,7 @@ async function startServer() {
             isScanRunning = true;
             try {
                 console.log("[SCANNER] Running 1m automatic market scan / sync...");
-                await runDarvasBoxScanner(); 
+                await runMananBoxScanner(); 
             } catch (scanError: any) {
                 // Capturing the error stops the 502 / SIGTERM app crashes completely!
                 console.error("[SCANNER ERROR] Scan execution failed, skipping this minute:", scanError.message);
@@ -424,7 +424,7 @@ async function startServer() {
 }
 
 // Background auto-scanner implementation
-async function runDarvasBoxScanner() {
+async function runMananBoxScanner() {
   try {
     const isHealthy = await DataKeeper.isCacheHealthy();
     if (!isHealthy) {

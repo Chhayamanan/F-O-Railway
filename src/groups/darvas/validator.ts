@@ -4,7 +4,7 @@ import { YahooService } from "../../services/yahooService";
 import { MstockService } from "../../services/mstockService";
 import { SETTINGS } from "../../config/settings";
 
-export class DarvasValidator {
+export class MananValidator {
   static async validate(stocks: StockCandidate[], multiplierOverride?: number): Promise<{ 
     signals: BuySignal[], 
     liveMetrics: Record<string, { price: number, volume: number, ratio: number, dailyChange: number, distFromHigh: number }> 
@@ -25,7 +25,7 @@ export class DarvasValidator {
         const currentVolume = live.volume || 0;
         const currentPrice = live.price || 0;
 
-        const multiplier = multiplierOverride || Number(SETTINGS.VOLUME_MULTIPLIER) || 1;
+        const multiplier = multiplierOverride || Number(SETTINGS.VALID_VOLUME_MULTIPLIER) || 3;
         const avgVol = Number(stock.avgVolume90d) || 0;
         
         if (avgVol <= 0) continue;
@@ -37,6 +37,7 @@ export class DarvasValidator {
 
         liveMetrics[stock.symbol] = { price: currentPrice, volume: currentVolume, ratio, dailyChange, distFromHigh };
 
+        // Manan Signal validation logic: Crosses high AND volume is 3x (or config threshold)
         const volumeCondition = ratio >= multiplier;
         const breakoutCondition = currentPrice >= stock.boxHigh;
 

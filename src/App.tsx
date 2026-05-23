@@ -31,8 +31,8 @@ export default function App() {
   const [volumeFilter, setVolumeFilter] = useState<number>(0);
   const [volMultiplier, setVolMultiplier] = useState<number>(4);
   const [spikeFactor, setSpikeFactor] = useState<number>(3);
-  const [activeTab, setActiveTab] = useState<'darvas' | 'rsTrend' | 'custom' | 'spike' | 'pending'>('darvas');
-  const [activeScan, setActiveScan] = useState<'darvas' | 'all' | null>(null);
+  const [activeTab, setActiveTab] = useState<'manan' | 'rsTrend' | 'custom' | 'spike' | 'pending'>('manan');
+  const [activeScan, setActiveScan] = useState<'manan' | 'all' | null>(null);
   const [countdown, setCountdown] = useState<number>(20);
   const [portfolio, setPortfolio] = useState<any>(null);
   const [isPortfolioLoading, setIsPortfolioLoading] = useState<boolean>(false);
@@ -56,8 +56,8 @@ export default function App() {
     let data: any[] = [];
     let filename = `scan_results_${new Date().toISOString().split('T')[0]}.csv`;
 
-    if (activeTab === 'darvas' || activeTab === 'rsTrend' || activeTab === 'custom') {
-      const activeResults = activeTab === 'darvas' ? results.darvas : activeTab === 'rsTrend' ? results.rsTrend : results.custom;
+    if (activeTab === 'manan' || activeTab === 'rsTrend' || activeTab === 'custom') {
+      const activeResults = activeTab === 'manan' ? results.manan : activeTab === 'rsTrend' ? results.rsTrend : results.custom;
       if (activeResults?.candidates) {
         data = activeResults.candidates.map((c: any) => ({
           Symbol: c.symbol,
@@ -201,13 +201,13 @@ export default function App() {
     }
   };
 
-  // Automated 1-minute Darvas Scanner callback
-  const triggerDarvasMonitoringScan = async () => {
+  // Automated 1-minute Manan Scanner callback
+  const triggerMananMonitoringScan = async () => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
-    addLog(`Automated Darvas Box scanning triggered...`);
+    addLog(`Automated Manan Signal scanning triggered...`);
     try {
-      const response = await fetch(`/api/run-darvas-system?multiplier=${volMultiplier}`);
+      const response = await fetch(`/api/run-manan-system?multiplier=${volMultiplier}`);
       const data = await response.json();
       if (data.success) {
         addLog(`Auto-scan: ${data.candidates.length} candidates, ${data.signals.length} signals detected.`);
@@ -221,7 +221,7 @@ export default function App() {
           });
         }
         if (data.signals && data.signals.length > 0) {
-          const prevPending = resultsRef.current?.darvas?.pendingTrades || [];
+          const prevPending = resultsRef.current?.manan?.pendingTrades || [];
           const newPending = data.pendingTrades || [];
           const combinedPending = [...prevPending];
           newPending.forEach((newT: any) => {
@@ -235,11 +235,11 @@ export default function App() {
 
         const mappedResults = {
           success: true,
-          darvas: {
+          manan: {
             candidates: data.candidates || [],
             signals: data.signals || [],
             pendingTrades: data.pendingTrades || [],
-            executedTrades: resultsRef.current?.darvas?.executedTrades || [],
+            executedTrades: resultsRef.current?.manan?.executedTrades || [],
             rejections: data.rejections || []
           },
           rsTrend: resultsRef.current?.rsTrend || { candidates: [] },
@@ -261,16 +261,16 @@ export default function App() {
     }
   };
 
-  // Effect 1: 20-second Autoclose / Polling Countdown loop for Darvas Scanner
+  // Effect 1: 20-second Autoclose / Polling Countdown loop for Manan Scanner
   React.useEffect(() => {
     let countdownInterval: NodeJS.Timeout;
-    if (activeScan === 'darvas' && isMonitoring) {
-      addLog(`Live Darvas Monitoring established (Auto-scanning every 20 seconds)`);
+    if (activeScan === 'manan' && isMonitoring) {
+      addLog(`Live Manan Monitoring established (Auto-scanning every 20 seconds)`);
       setCountdown(20);
       countdownInterval = setInterval(() => {
         setCountdown(prev => {
           if (prev <= 1) {
-            triggerDarvasMonitoringScan();
+            triggerMananMonitoringScan();
             return 20;
           }
           return prev - 1;
@@ -301,15 +301,15 @@ export default function App() {
   //   };
   // }, [isMonitoring]);
 
-  // ISOLATED SCAN 1: Darvas Box Scanner (Main Monitoring Scan)
-  const runDarvasScan = async () => {
+  // ISOLATED SCAN 1: Manan Signal Scanner (Main Monitoring Scan)
+  const runMananScan = async () => {
     setIsRunning(true);
     setResults(null);
     setLogs([]);
-    setActiveScan('darvas');
+    setActiveScan('manan');
     setIsMonitoring(true);
     setCountdown(20);
-    addLog("Initializing ISO-1: Darvas Box Scanning Engine...");
+    addLog("Initializing ISO-1: Manan Signal Scanning Engine...");
 
     try {
       const statusRes = await fetch('/api/data-keeper/status');
@@ -320,13 +320,13 @@ export default function App() {
         addLog("WARNING: Market data is stale (over 12h). Run Data Keeper Sync!");
       }
 
-      addLog(`Step 1: Darvas Box Scanner deployed (Vol Multiplier: ${volMultiplier}x)`);
-      const response = await fetch(`/api/run-darvas-system?multiplier=${volMultiplier}`);
+      addLog(`Step 1: Manan Signal Scanner deployed (Vol Multiplier: ${volMultiplier}x)`);
+      const response = await fetch(`/api/run-manan-system?multiplier=${volMultiplier}`);
       const data = await response.json();
 
       if (data.success) {
-        addLog(`Darvas Box scan completed.`);
-        addLog(`Darvas: ${data.candidates.length} candidates, ${data.signals.length} signals`);
+        addLog(`Manan Signal scan completed.`);
+        addLog(`Manan: ${data.candidates.length} candidates, ${data.signals.length} signals`);
         if (data.rejections && data.rejections.length > 0) {
           data.rejections.forEach((rej: any) => {
             addLog(`Blocked: ${rej.symbol} - ${rej.reason}`);
@@ -341,7 +341,7 @@ export default function App() {
         
         const mappedResults = {
           success: true,
-          darvas: {
+          manan: {
             candidates: data.candidates || [],
             signals: data.signals || [],
             pendingTrades: data.pendingTrades || [],
@@ -536,12 +536,12 @@ export default function App() {
       addLog(`SIGNAL SKIPPED: ${pending.signal.symbol}`);
       setTimeout(() => {
         setResults((prev: any) => {
-           if (!prev || !prev.darvas) return prev;
+           if (!prev || !prev.manan) return prev;
            return {
              ...prev,
-             darvas: {
-               ...prev.darvas,
-               pendingTrades: prev.darvas.pendingTrades.filter((p: any) => 
+             manan: {
+               ...prev.manan,
+               pendingTrades: prev.manan.pendingTrades.filter((p: any) => 
                  p.signal.symbol !== pending.signal.symbol
                )
              }
@@ -574,15 +574,15 @@ export default function App() {
         
         setTimeout(() => {
           setResults((prev: any) => {
-             if (!prev || !prev.darvas) return prev;
+             if (!prev || !prev.manan) return prev;
              return {
                ...prev,
-               darvas: {
-                 ...prev.darvas,
-                 pendingTrades: prev.darvas.pendingTrades.filter((p: any) => 
+               manan: {
+                 ...prev.manan,
+                 pendingTrades: prev.manan.pendingTrades.filter((p: any) => 
                    p.signal.symbol !== pending.signal.symbol
                  ),
-                 executedTrades: [...(prev.darvas.executedTrades || []), ...(data.executedTrades || [])]
+                 executedTrades: [...(prev.manan.executedTrades || []), ...(data.executedTrades || [])]
                }
              };
           });
@@ -638,7 +638,7 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            {isMonitoring && activeScan === 'darvas' && (
+            {isMonitoring && activeScan === 'manan' && (
               <div className="flex items-center gap-2 px-3 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-400 font-mono text-xs font-bold shadow-md shadow-indigo-500/5">
                 <Clock className="w-3.5 h-3.5" />
                 <span>Auto-Scan: {countdown}s</span>
@@ -648,7 +648,7 @@ export default function App() {
             <motion.button
               whileHover={{ scale: 1.02, translateY: -1 }}
               whileTap={{ scale: 0.98 }}
-              onClick={runDarvasScan}
+              onClick={runMananScan}
               disabled={isRunning}
               className={`flex items-center gap-2.5 px-6 py-3 rounded-2xl font-bold transition-all ${
                 isRunning 
@@ -657,7 +657,7 @@ export default function App() {
               }`}
             >
               {isRunning ? <Activity className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
-              <span className="text-sm">Scan Darvas Box</span>
+              <span className="text-sm">Scan Manan Signal</span>
             </motion.button>
 
             {isMonitoring && (
@@ -819,7 +819,7 @@ export default function App() {
               />
               <StatsCard 
                 label="Active Group" 
-                value="Darvas Box" 
+                value="Manan Signal" 
                 sub="Momentum Aggressive" 
                 icon={ShieldCheck}
                 color="text-emerald-400"
@@ -840,14 +840,14 @@ export default function App() {
                 {/* Tabs Selector (Always Available) */}
                 <div className="flex bg-zinc-900/50 border border-zinc-800 p-1 rounded-xl w-full select-none">
                   <button
-                    onClick={() => setActiveTab('darvas')}
+                    onClick={() => setActiveTab('manan')}
                     className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
-                      activeTab === 'darvas'
+                      activeTab === 'manan'
                         ? 'bg-indigo-600 text-white shadow-md'
                         : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
                     }`}
                   >
-                    Darvas Monitor
+                    Manan Monitor
                   </button>
                   <button
                     onClick={() => setActiveTab('pending')}
@@ -858,9 +858,9 @@ export default function App() {
                     }`}
                   >
                     CEO Desk
-                    {results?.darvas?.pendingTrades?.length > 0 && (
+                    {results?.manan?.pendingTrades?.length > 0 && (
                       <span className="bg-emerald-500 text-zinc-900 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
-                        {results.darvas.pendingTrades.length}
+                        {results.manan.pendingTrades.length}
                       </span>
                     )}
                   </button>
@@ -896,23 +896,23 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* 1. Darvas Monitor Tab */}
-                {activeTab === 'darvas' && (
+                {/* 1. Manan Monitor Tab */}
+                {activeTab === 'manan' && (
                   <div className="space-y-6">
                     {/* Control Panel & Standalone Trigger */}
                     <div className="bg-[#0f0f12] p-6 rounded-2xl border border-zinc-800/80 space-y-4 shadow-sm">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/60 pb-4 gap-3">
                         <div>
-                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Darvas Box Agent Dashboard</h3>
+                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Manan Signal Agent Dashboard</h3>
                           <p className="text-[10px] text-zinc-500">Tracks price ranges and breakout metrics. Relayed to Broker Agent.</p>
                         </div>
                         <button
-                          onClick={runDarvasScan}
+                          onClick={runMananScan}
                           disabled={isRunning}
                           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 rounded-xl font-bold text-xs text-white transition-all shadow-md shadow-indigo-600/20 active:scale-95 flex items-center justify-center gap-1.5 self-start sm:self-auto"
                         >
-                          {isRunning && activeScan === 'darvas' ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                          Start Darvas Auto-Monitor (20s)
+                          {isRunning && activeScan === 'manan' ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                          Start Manan Auto-Monitor (20s)
                         </button>
                       </div>
                       
@@ -993,41 +993,41 @@ export default function App() {
                       </div>
                     </div>
 
-                    {results?.darvas ? (
+                    {results?.manan ? (
                       <>
                         {/* Summary metrics header */}
                         <div className="grid grid-cols-4 gap-6">
                           <SummaryMetric 
                             label="Scan Scope" 
-                            value={results.darvas.candidates?.length || 0} 
+                            value={results.manan.candidates?.length || 0} 
                             sub="Assets" 
                             onClick={() => setActiveDetail('scope')}
                           />
                           <SummaryMetric 
                             label="Valid Signals" 
-                            value={results.darvas.signals?.length || 0} 
+                            value={results.manan.signals?.length || 0} 
                             sub="Opportunities" 
                             onClick={() => setActiveDetail('signals')}
                           />
                           <SummaryMetric 
                             label="CEO Desk" 
-                            value={results.darvas.pendingTrades?.length || 0} 
+                            value={results.manan.pendingTrades?.length || 0} 
                             sub="Requires Action" 
                             onClick={() => setActiveTab('pending')}
                           />
                           <SummaryMetric 
                             label="Executions" 
-                            value={results.darvas.executedTrades?.length || 0} 
+                            value={results.manan.executedTrades?.length || 0} 
                             sub="Orders" 
                           />
                         </div>
 
                         {/* Executions log */}
-                        {results.darvas.executedTrades?.length > 0 && (
+                        {results.manan.executedTrades?.length > 0 && (
                           <section>
                             <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 px-1">Recent Executions</h3>
                             <div className="space-y-3">
-                              {results.darvas.executedTrades.map((trade: any, i: number) => (
+                              {results.manan.executedTrades.map((trade: any, i: number) => (
                                 <TradeCard key={i} trade={trade} />
                               ))}
                             </div>
@@ -1036,10 +1036,10 @@ export default function App() {
 
                         {/* Pipeline grid */}
                         <section>
-                          <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 px-1">Candidate Pipeline (Darvas)</h3>
-                          {results.darvas.candidates?.length > 0 ? (
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 px-1">Candidate Pipeline (Manan)</h3>
+                          {results.manan.candidates?.length > 0 ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {results.darvas.candidates
+                              {results.manan.candidates
                                 ?.filter((c: any) => {
                                   const pos = ((c.currentPrice - c.boxLow) / (c.boxHigh - c.boxLow)) * 100;
                                   return pos >= positionFilter && c.volumeRatio >= volumeFilter;
@@ -1049,13 +1049,13 @@ export default function App() {
                                 ))}
                             </div>
                           ) : (
-                            <div className="text-center py-8 text-zinc-500 italic">No assets qualified for Darvas criteria.</div>
+                            <div className="text-center py-8 text-zinc-500 italic">No assets qualified for Manan criteria.</div>
                           )}
                         </section>
                       </>
                     ) : (
                       <div className="bg-[#0f0f12]/30 border-2 border-dashed border-zinc-800 rounded-3xl p-16 text-center text-zinc-500">
-                        <h4 className="text-sm font-bold text-zinc-400 mb-1">Darvas Monitor Idle</h4>
+                        <h4 className="text-sm font-bold text-zinc-400 mb-1">Manan Monitor Idle</h4>
                         <p className="text-xs max-w-xs mx-auto mb-4 text-zinc-600">Start the auto-monitor above to begin collecting breakout trades and plotting box candidates.</p>
                       </div>
                     )}
@@ -1400,13 +1400,13 @@ export default function App() {
                       </div>
                       
                       {/* Pending Approvals */}
-                      {results?.darvas?.pendingTrades?.length > 0 ? (
+                      {results?.manan?.pendingTrades?.length > 0 ? (
                         <section>
                           <div className="flex items-center justify-between mb-4 mt-6 px-1">
                             <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Requires Your Authorization</h3>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {results.darvas.pendingTrades.map((pending: any, i: number) => {
+                            {results.manan.pendingTrades.map((pending: any, i: number) => {
                               const action = ceoTradeActions[pending.signal.symbol];
                               const isExpanded = expandedSignals[pending.signal.symbol];
                               const isLocked = !!action;
@@ -1514,13 +1514,13 @@ export default function App() {
                       )}
 
                       {/* Rejected Signals */}
-                      {results?.darvas?.rejections?.length > 0 && (
+                      {results?.manan?.rejections?.length > 0 && (
                         <section className="mt-8 pt-8 border-t border-zinc-800/60">
                           <div className="flex items-center justify-between mb-4 px-1">
                             <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Algorithm Rejections</h3>
                           </div>
                           <div className="space-y-3">
-                            {results.darvas.rejections.map((rej: any, i: number) => (
+                            {results.manan.rejections.map((rej: any, i: number) => (
                               <div key={i} className="bg-red-500/5 border border-red-500/20 p-4 rounded-xl flex items-center justify-between">
                                 <div>
                                   <h4 className="font-bold text-red-400 text-sm">{rej.symbol}</h4>
@@ -1661,7 +1661,7 @@ export default function App() {
                 {activeDetail === 'scope' ? (
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {(() => {
-                      const activeResults = activeTab === 'darvas' ? results?.darvas : activeTab === 'rsTrend' ? results?.rsTrend : results?.custom;
+                      const activeResults = activeTab === 'manan' ? results?.manan : activeTab === 'rsTrend' ? results?.rsTrend : results?.custom;
                       return activeResults?.candidates
                         ?.filter((c: any) => {
                           const pos = ((c.currentPrice - c.boxLow) / (c.boxHigh - c.boxLow)) * 100;
@@ -1735,7 +1735,7 @@ export default function App() {
                 ) : (
                   <div className="space-y-3">
                     {(() => {
-                      const activeResults = activeTab === 'darvas' ? results?.darvas : activeTab === 'rsTrend' ? results?.rsTrend : results?.custom;
+                      const activeResults = activeTab === 'manan' ? results?.manan : activeTab === 'rsTrend' ? results?.rsTrend : results?.custom;
                       return activeResults?.signals
                         ?.filter((s: any) => (s.volumeRatio || (s.currentVolume / s.avgVolume)) >= volumeFilter)
                         .map((s: any, i: number) => {

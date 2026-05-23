@@ -6,7 +6,7 @@ import { LARGE_CAP_STOCKS, MIDCAP_STOCKS, SMALLCAP_STOCKS, getBenchmarkIndex, MA
 import { YahooService } from "../../services/yahooService";
 import { MstockService } from "../../services/mstockService";
 
-export class DarvasScanner {
+export class MananScanner {
   static async scan(symbols: string[], options: { 
     volumeMultiplier?: number, 
     rsTrendOnly?: boolean,
@@ -18,7 +18,7 @@ export class DarvasScanner {
     }
   } = {}): Promise<StockCandidate[]> {
     const candidates: StockCandidate[] = [];
-    const multiplier = options.volumeMultiplier ?? SETTINGS.VOLUME_MULTIPLIER;
+    const _multiplier = options.volumeMultiplier ?? SETTINGS.SCAN_VOLUME_MULTIPLIER;
     
     // Check if cache is healthy
     const healthy = await DataKeeper.isCacheHealthy();
@@ -64,7 +64,7 @@ export class DarvasScanner {
         const avgVolume90d = volumes.reduce((a: number, b: number) => a + b, 0) / (volumes.length || 1);
         const volumeRatio = currentVolume / (avgVolume90d || 1);
 
-        // Step 1: Filters
+        // Step 1: Filters (Manan Signal)
         if (options.customFilters) {
           const { volMult, distFromHigh: maxDist, dailyChangeMin, dailyChangeMax } = options.customFilters;
           
@@ -73,10 +73,14 @@ export class DarvasScanner {
           if (dailyChangeMin !== undefined && dailyChange < dailyChangeMin) continue;
           if (dailyChangeMax !== undefined && dailyChange > dailyChangeMax) continue;
         } else if (!options.rsTrendOnly) {
-          // Standard Darvas Filters
-          const range = ((historicalHigh - historicalLow) / (historicalLow || 1)) * 100;
-          if (range > SETTINGS.BOX_RANGE_LIMIT) continue;
-          if (volumeRatio < multiplier) continue;
+          // Manan Signal Scan Scope: Crosses 90-day high OR 98% of 90-day high with SETTINGS.SCAN_VOLUME_MULTIPLIER volume
+          const scanVolThreshold = SETTINGS.SCAN_VOLUME_MULTIPLIER;
+          const meetsPrice = currentPrice >= (historicalHigh * 0.98);
+          const meetsVolume = volumeRatio >= scanVolThreshold;
+          
+          if (!meetsPrice || !meetsVolume) {
+            continue;
+          }
         }
 
         // Determine Market Cap
