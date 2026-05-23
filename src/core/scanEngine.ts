@@ -51,9 +51,9 @@ export class ScanEngine {
          
          const isCrossHigh = ltp > cached.high90d;
          const isVol3x = latestVolume >= 3 * cached.avgVol90d;
-         const isCeoDesk = isCrossHigh;
          
-         const isScanScope = (ltp >= 0.98 * cached.high90d) || (latestVolume >= 2 * cached.avgVol90d) || isCeoDesk;
+         const isScanScope = (ltp >= 0.98 * cached.high90d) || (latestVolume >= 2 * cached.avgVol90d) || isCrossHigh;
+         const isCeoDesk = isScanScope;
          
          if (isScanScope) {
             const lotSize = this.MOCK_LOT_SIZES[plainSymbol] || 500; // default proxy 500
