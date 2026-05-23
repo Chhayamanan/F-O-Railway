@@ -1,109 +1,76 @@
-import fs from "fs/promises";
-import path from "path";
-import { YahooService } from "../services/yahooService";
+import fs from 'fs/promises';
+import path from 'path';
+import { YahooService } from '../services/yahooService';
 
-const STORAGE_PATH = path.join(process.cwd(), "market_cache.json");
+const CACHE_FILE = path.join(process.cwd(), 'market_cache.json');
 
-export interface CachedData {
-  lastSync: number;
-  data: Record<string, any>;
+export interface CachedStockData {
+  high90d: number;
+  avgVol90d: number;
+  lastUpdated: number;
 }
 
 export class DataKeeper {
-  private static memoryCache: CachedData | null = null;
-  private static lastCacheLoad = 0;
+  private static cache: Record<string, CachedStockData> | null = null;
 
-  static async fetchAndStore(symbols: string[]) {
-    // Unique symbols only
-    const uniqueSymbols = [...new Set(symbols)];
-    console.log(`[DATA KEEPER] Starting synchronization for ${uniqueSymbols.length} unique symbols...`);
-    
-    const currentCache = await this.readCache();
+  static async init() {
+    try {
+      const data = await fs.readFile(CACHE_FILE, 'utf8');
+      this.cache = JSON.parse(data);
+    } catch (e) {
+      this.cache = {};
+    }
+  }
 
-    const cache: CachedData = {
-      lastSync: Date.now(),
-      data: currentCache?.data || {}
-    };
+  static async saveCache() {
+    if (this.cache) {
+      await fs.writeFile(CACHE_FILE, JSON.stringify(this.cache, null, 2));
+    }
+  }
 
-    for (let i = 0; i < uniqueSymbols.length; i++) {
-      const symbol = uniqueSymbols[i];
-      let retries = 1; // Drop to 1 retry to fail fast on Network errors 
-      while (retries > 0) {
-        try {
-          const candles = await YahooService.get90DayData(symbol);
-          if (candles && candles.length > 0) {
-            cache.data[symbol] = candles;
-            console.log(`[DATA KEEPER] Updated ${symbol} (${i + 1}/${uniqueSymbols.length})`);
-            break; 
-          } else {
-            console.warn(`[DATA KEEPER] Empty data for ${symbol}, retrying...`);
-            retries--;
-            if (retries > 0) await new Promise(resolve => setTimeout(resolve, 500));
+  static async getCache() {
+    if (!this.cache) await this.init();
+    return this.cache;
+  }
+
+  static async syncStockData(symbols: string[]) {
+    if (!this.cache) await this.init();
+
+    console.log(`[DATA KEEPER] Syncing data for ${symbols.length} stocks...`);
+    for (const symbol of symbols) {
+      const data = await YahooService.get90DayData(symbol);
+      if (data && data.length > 0) {
+        let maxHigh = 0;
+        let totalVol = 0;
+        let validDays = 0;
+        
+        for (const day of data) {
+          if (day.high) maxHigh = Math.max(maxHigh, day.high);
+          if (day.volume) {
+            totalVol += day.volume;
+            validDays++;
           }
-        } catch (err) {
-          console.error(`[DATA KEEPER] Failed to fetch ${symbol}:`, err);
-          retries--;
         }
+        
+        const avgVol = validDays > 0 ? totalVol / validDays : 0;
+        
+        this.cache![symbol] = {
+          high90d: maxHigh,
+          avgVol90d: avgVol,
+          lastUpdated: Date.now()
+        };
       }
       
-      // Sleep between requests
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Delay to avoid Yahoo rate limits
+      await new Promise(res => setTimeout(res, 100));
     }
-
-    // Save only once at the end to avoid massive I/O
-    console.log(`[DATA KEEPER] Saving cache to disk...`);
-    await fs.writeFile(STORAGE_PATH, JSON.stringify(cache));
-
-    this.memoryCache = cache;
-    this.lastCacheLoad = Date.now();
-
-    console.log(`[DATA KEEPER] Synchronization complete.`);
-    return cache;
-  }
-
-  static async getData(symbol: string) {
-    const cache = await this.readCache();
-    if (!cache || !cache.data[symbol]) return null;
     
-    return cache.data[symbol];
+    await this.saveCache();
+    console.log('[DATA KEEPER] Sync Complete.');
   }
 
-  static async getIntradayData(symbol: string) {
-    // Intraday Data removed per request
-    return null;
-  }
-
-  static async getLastSyncTime() {
-    const cache = await this.readCache();
-    return cache ? cache.lastSync : 0;
-  }
-
-  static async isCacheHealthy() {
-    const lastSync = await this.getLastSyncTime();
-    if (!lastSync) return false;
-    
-    const twelveHours = 12 * 60 * 60 * 1000;
-    return (Date.now() - lastSync) < twelveHours;
-  }
-
-  static async getFullCache() {
-    return this.readCache();
-  }
-
-  static async getFullIntradayCache() {
-    return { data: {}, lastSync: 0 };
-  }
-
-  private static async readCache(): Promise<CachedData | null> {
-    const now = Date.now();
-    if (this.memoryCache && (now - this.lastCacheLoad < 60000)) return this.memoryCache;
-    try {
-      const content = await fs.readFile(STORAGE_PATH, "utf-8");
-      this.memoryCache = JSON.parse(content);
-      this.lastCacheLoad = now;
-      return this.memoryCache;
-    } catch (err) {
-      return null;
-    }
+  static getStockData(symbol: string): CachedStockData | null {
+    if (!this.cache) return null;
+    return this.cache[symbol] || null;
   }
 }
