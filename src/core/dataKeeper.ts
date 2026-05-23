@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { YahooService } from '../services/yahooService';
+import { LARGE_CAP_STOCKS } from '../services/marketDataService';
 
 const CACHE_FILE = path.join(process.cwd(), 'market_cache.json');
 
@@ -33,18 +34,21 @@ export class DataKeeper {
     return this.cache;
   }
 
-  static async syncStockData(symbols: string[]) {
+  static async syncLargeCapStocks() {
     if (!this.cache) await this.init();
 
-    console.log(`[DATA KEEPER] Syncing data for ${symbols.length} stocks...`);
-    
-    // Increased chunk size slightly, but added explicit try/catch per symbol
-    const CHUNK_SIZE = 8; 
-    let successCount = 0;
-    let failCount = 0;
+    // 1. Transform clean names into explicit Yahoo Tickers (appending .NS)
+    const targetSymbols = LARGE_CAP_STOCKS.map(symbol => 
+      symbol.endsWith('.NS') ? symbol : `${symbol}.NS`
+    );
 
-    for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
-      const chunk = symbols.slice(i, i + CHUNK_SIZE);
+    console.log(`[DATA KEEPER] Strictly syncing ${targetSymbols.length} Large Cap stocks...`);
+    
+    // Keeping a safe chunk size to avoid Yahoo's aggressive blocks
+    const CHUNK_SIZE = 4; 
+    
+    for (let i = 0; i < targetSymbols.length; i += CHUNK_SIZE) {
+      const chunk = targetSymbols.slice(i, i + CHUNK_SIZE);
       
       await Promise.all(chunk.map(async (symbol) => {
         try {
@@ -63,40 +67,33 @@ export class DataKeeper {
               }
             }
             
-            const avgVol = validDays > 0 ? totalVol / validDays : 0;
-            
             this.cache![symbol] = {
               high90d: maxHigh,
-              avgVol90d: avgVol,
+              avgVol90d: validDays > 0 ? totalVol / validDays : 0,
               lastUpdated: Date.now()
             };
-            successCount++;
-          } else {
-            failCount++;
           }
         } catch (error) {
-          // Captures individual fetch failures so the entire batch doesn't crash
-          console.error(`[DATA KEEPER] Failed to process ${symbol}:`, error instanceof Error ? error.message : String(error));
-          failCount++;
+          console.error(`[DATA KEEPER] Fetch skipped/failed for ${symbol}`);
         }
       }));
       
-      // Dynamic throttle: small break to respect rate limits
-      await new Promise(res => setTimeout(res, 600));
+      // Mandatory pacing window to stop Yahoo from dropping the connection
+      await new Promise(res => setTimeout(res, 800));
       
-      // Periodically save cache incrementally every 24 stocks so progress isn't lost
-      if (i % 24 === 0 && i !== 0) {
-        await this.saveCache();
-        console.log(`[DATA KEEPER] Progress: Synced ${i}/${symbols.length} stocks...`);
+      if (i % 12 === 0 && i !== 0) {
+        console.log(`[DATA KEEPER] Synced ${i}/${targetSymbols.length} targets...`);
+        await this.saveCache(); // Incremental saves
       }
     }
     
     await this.saveCache();
-    console.log(`[DATA KEEPER] Sync Complete. Success: ${successCount}, Failed: ${failCount}`);
+    console.log('[DATA KEEPER] Focused Large Cap Sync Complete.');
   }
 
   static getStockData(symbol: string): CachedStockData | null {
     if (!this.cache) return null;
-    return this.cache[symbol] || null;
+    const formattedSymbol = symbol.endsWith('.NS') ? symbol : `${symbol}.NS`;
+    return this.cache[formattedSymbol] || null;
   }
 }
