@@ -1,0 +1,282 @@
+{
+  "360ONE": {
+    "high90d": 1142.9000244140625,
+    "avgVol90d": 1084843.9830508474,
+    "lastUpdated": 1779565186585
+  },
+  "AUBANK": {
+    "high90d": 1079.550048828125,
+    "avgVol90d": 2945379.2711864407,
+    "lastUpdated": 1779565186592
+  },
+  "APLAPOLLO": {
+    "high90d": 2252.699951171875,
+    "avgVol90d": 691036.7118644068,
+    "lastUpdated": 1779565186596
+  },
+  "ABB": {
+    "high90d": 7822.5,
+    "avgVol90d": 472727.406779661,
+    "lastUpdated": 1779565186599
+  },
+  "ADANIENSOL": {
+    "high90d": 1463.6500244140625,
+    "avgVol90d": 2957636.2033898304,
+    "lastUpdated": 1779565186621
+  },
+  "ADANIENT": {
+    "high90d": 2803.10009765625,
+    "avgVol90d": 2472229.305084746,
+    "lastUpdated": 1779565186622
+  },
+  "ADANIGREEN": {
+    "high90d": 1471,
+    "avgVol90d": 4537269.457627119,
+    "lastUpdated": 1779565186623
+  },
+  "ADANIPORTS": {
+    "high90d": 1823.9000244140625,
+    "avgVol90d": 3288285.779661017,
+    "lastUpdated": 1779565186639
+  },
+  "ABCAPITAL": {
+    "high90d": 375.95001220703125,
+    "avgVol90d": 6890370.966101695,
+    "lastUpdated": 1779565187266
+  },
+  "ADANIPOWER": {
+    "high90d": 234.39999389648438,
+    "avgVol90d": 43544917.779661015,
+    "lastUpdated": 1779565187267
+  },
+  "AMBER": {
+    "high90d": 8974,
+    "avgVol90d": 405499.8813559322,
+    "lastUpdated": 1779565187268
+  },
+  "ALKEM": {
+    "high90d": 5781.5,
+    "avgVol90d": 113264.67796610169,
+    "lastUpdated": 1779565187277
+  },
+  "ANGELONE": {
+    "high90d": 345.6499938964844,
+    "avgVol90d": 10587674.372881357,
+    "lastUpdated": 1779565187288
+  },
+  "APOLLOHOSP": {
+    "high90d": 8440.5,
+    "avgVol90d": 447581.9661016949,
+    "lastUpdated": 1779565187307
+  },
+  "AMBUJACEM": {
+    "high90d": 518.6500244140625,
+    "avgVol90d": 3369011.8983050846,
+    "lastUpdated": 1779565187312
+  },
+  "ASHOKLEY": {
+    "high90d": 214.10000610351562,
+    "avgVol90d": 24373952.13559322,
+    "lastUpdated": 1779565187325
+  },
+  "DMART": {
+    "high90d": 4644,
+    "avgVol90d": 592249.1525423729,
+    "lastUpdated": 1779565187949
+  },
+  "AUROPHARMA": {
+    "high90d": 1550,
+    "avgVol90d": 1540543.3389830508,
+    "lastUpdated": 1779565187977
+  },
+  "ASIANPAINT": {
+    "high90d": 2665.699951171875,
+    "avgVol90d": 1266562.152542373,
+    "lastUpdated": 1779565187978
+  },
+  "ASTRAL": {
+    "high90d": 1768.699951171875,
+    "avgVol90d": 791777.6779661017,
+    "lastUpdated": 1779565187992
+  },
+  "AXISBANK": {
+    "high90d": 1405.699951171875,
+    "avgVol90d": 7483779.338983051,
+    "lastUpdated": 1779565188003
+  },
+  "BSE": {
+    "high90d": 4298.89990234375,
+    "avgVol90d": 4402044.847457627,
+    "lastUpdated": 1779565188007
+  },
+  "BAJAJ-AUTO": {
+    "high90d": 10785,
+    "avgVol90d": 388400.6271186441,
+    "lastUpdated": 1779565188016
+  },
+  "BAJFINANCE": {
+    "high90d": 1046,
+    "avgVol90d": 9308919.322033899,
+    "lastUpdated": 1779565188038
+  },
+  "BANDHANBNK": {
+    "high90d": 212.66000366210938,
+    "avgVol90d": 13363919.305084746,
+    "lastUpdated": 1779565188667
+  },
+  "BAJAJHLDNG": {
+    "high90d": 11632,
+    "avgVol90d": 55703.27118644068,
+    "lastUpdated": 1779565188682
+  },
+  "BANKBARODA": {
+    "high90d": 325.5,
+    "avgVol90d": 11257677.254237289,
+    "lastUpdated": 1779565188691
+  },
+  "BDL": {
+    "high90d": 1481.199951171875,
+    "avgVol90d": 1523446.0169491526,
+    "lastUpdated": 1779565188713
+  },
+  "BANKINDIA": {
+    "high90d": 178.36000061035156,
+    "avgVol90d": 11200639.288135594,
+    "lastUpdated": 1779565188719
+  },
+  "BEL": {
+    "high90d": 473.45001220703125,
+    "avgVol90d": 16142079.525423728,
+    "lastUpdated": 1779565188731
+  },
+  "BAJAJFINSV": {
+    "high90d": 2074.89990234375,
+    "avgVol90d": 1372373.847457627,
+    "lastUpdated": 1779565188736
+  },
+  "BHARATFORG": {
+    "high90d": 2044,
+    "avgVol90d": 1436160.440677966,
+    "lastUpdated": 1779565188749
+  },
+  "BHEL": {
+    "high90d": 417.8999938964844,
+    "avgVol90d": 16945739.542372882,
+    "lastUpdated": 1779565189396
+  },
+  "BIOCON": {
+    "high90d": 436.8999938964844,
+    "avgVol90d": 4260911.72881356,
+    "lastUpdated": 1779565189396
+  },
+  "BHARTIARTL": {
+    "high90d": 2000.5,
+    "avgVol90d": 10213179.813559322,
+    "lastUpdated": 1779565189400
+  },
+  "BPCL": {
+    "high90d": 389.8999938964844,
+    "avgVol90d": 13456490.237288136,
+    "lastUpdated": 1779565189403
+  },
+  "BLUESTARCO": {
+    "high90d": 1990.800048828125,
+    "avgVol90d": 677511.6779661017,
+    "lastUpdated": 1779565189434
+  },
+  "BOSCHLTD": {
+    "high90d": 38855,
+    "avgVol90d": 39518.27118644068,
+    "lastUpdated": 1779565189435
+  },
+  "BRITANNIA": {
+    "high90d": 6208.5,
+    "avgVol90d": 447823.3559322034,
+    "lastUpdated": 1779565189444
+  },
+  "CGPOWER": {
+    "high90d": 886.7999877929688,
+    "avgVol90d": 3376679.8305084747,
+    "lastUpdated": 1779565189452
+  },
+  "CDSL": {
+    "high90d": 1401.0999755859375,
+    "avgVol90d": 2178074.186440678,
+    "lastUpdated": 1779565190082
+  },
+  "CANBK": {
+    "high90d": 162.88999938964844,
+    "avgVol90d": 24405770.610169493,
+    "lastUpdated": 1779565190095
+  },
+  "CIPLA": {
+    "high90d": 1444.5,
+    "avgVol90d": 1922781.06779661,
+    "lastUpdated": 1779565190112
+  },
+  "CHOLAFIN": {
+    "high90d": 1774.5999755859375,
+    "avgVol90d": 2117122.033898305,
+    "lastUpdated": 1779565190112
+  },
+  "COALINDIA": {
+    "high90d": 491.25,
+    "avgVol90d": 12658362.559322033,
+    "lastUpdated": 1779565190114
+  },
+  "COCHINSHIP": {
+    "high90d": 1842.800048828125,
+    "avgVol90d": 1973287.8983050848,
+    "lastUpdated": 1779565190123
+  },
+  "COFORGE": {
+    "high90d": 1447,
+    "avgVol90d": 4069675.474576271,
+    "lastUpdated": 1779565190148
+  },
+  "COLPAL": {
+    "high90d": 2301.60009765625,
+    "avgVol90d": 449698.0169491525,
+    "lastUpdated": 1779565190152
+  },
+  "CAMS": {
+    "high90d": 844.9000244140625,
+    "avgVol90d": 1810554.4915254237,
+    "lastUpdated": 1779565190781
+  },
+  "CROMPTON": {
+    "high90d": 310.5,
+    "avgVol90d": 3997933.559322034,
+    "lastUpdated": 1779565190785
+  },
+  "CONCOR": {
+    "high90d": 537,
+    "avgVol90d": 1523834.3559322034,
+    "lastUpdated": 1779565190821
+  },
+  "CUMMINSIND": {
+    "high90d": 5470.5,
+    "avgVol90d": 713251.2033898305,
+    "lastUpdated": 1779565190822
+  },
+  "DLF": {
+    "high90d": 634,
+    "avgVol90d": 4610655.898305085,
+    "lastUpdated": 1779565190842
+  },
+  "DABUR": {
+    "high90d": 525.5,
+    "avgVol90d": 2084394.1016949152,
+    "lastUpdated": 1779565190842
+  },
+  "DALBHARAT": {
+    "high90d": 2108.10009765625,
+    "avgVol90d": 322447.6271186441,
+    "lastUpdated": 1779565190845
+  },
+  "DELHIVERY": {
+    "high90d": 487.5,
+    "avgVol90d": 2658526.0169491526,
+    "lastUpdated": 1779565190846
+  }
+}

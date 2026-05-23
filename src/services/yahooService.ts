@@ -43,8 +43,8 @@ export class YahooService {
       console.warn(`[YAHOO] NSE fetch failed for ${ticker}: ${e.message}`);
       // Retry with BSE if NSE failed
       if (!symbol.includes(".")) {
+        const bseTicker = `${symbol}.BO`;
         try {
-          const bseTicker = `${symbol}.BO`;
           const result = await this.fetchWithRetry(bseTicker, queryOptions);
           return result.quotes || [];
         } catch (e2: any) {
