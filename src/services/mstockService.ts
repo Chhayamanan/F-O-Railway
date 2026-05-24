@@ -316,94 +316,7 @@ export class MstockService {
     }
   }
 
-  static async placeOrder(symbol: string, quantity: number = 1, price: number = 0) {
-    const apiKey = process.env.MSTOCK_API_KEY;
-    
-    let sessionToken = null;
-    try {
-        sessionToken = await this.getMstockJwtToken();
-    } catch (e: any) {
-        throw new Error("Mstock Auth Failed: " + e.message);
-    }
-    
-    if (!apiKey || !sessionToken) {
-      throw new Error("Mstock Auth Failed. Missing API Key or session is not active. Cannot trade.");
-    }
-    
-    const symbolInfo = await this.getFutureSymbolToken(symbol, apiKey!, sessionToken);
-    if (!symbolInfo) {
-       throw new Error(`Future symbol token not found for ${symbol}. Market lot and symbol cannot be resolved.`);
-    }
-
-    const orderUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
-
-    const orderHeaders = {
-      'X-Mirae-Version': '1',
-      'X-PrivateKey': apiKey,
-      'Authorization': `Bearer ${sessionToken}`,
-      'Content-Type': 'application/json'
-    };
-
-    // Ensure quantity is a multiple of lotSize (if called with '1' meaning 1 lot, we multiply it).
-    // Or if the caller passed the raw lotSize, we just ensure it aligns.
-    // E.g. scanEngine passes `item.lotSize`, so let's just assume `quantity` is the actual share quantity.
-    // We will round it to the nearest lot multiple for safety.
-    let finalQuantity = quantity;
-    if (quantity < symbolInfo.lotSize) {
-        finalQuantity = symbolInfo.lotSize;
-    } else {
-        finalQuantity = Math.floor(quantity / symbolInfo.lotSize) * symbolInfo.lotSize;
-    }
-
-    try {
-      const orderPayload = {
-        variety: "NORMAL",
-        tradingsymbol: symbolInfo.tradingSymbol,
-        symboltoken: symbolInfo.token,
-        exchange: "NFO",              // ← Important: F&O Market
-        transactiontype: "BUY",       
-        ordertype: price > 0 ? "LIMIT" : "MARKET",
-        quantity: finalQuantity.toString(),
-        producttype: "CARRYFORWARD",  // ← Important: Holding F&O 
-        price: price > 0 ? (Math.round(price * 20) / 20).toFixed(2) : "0",
-        triggerprice: "0",            
-        squareoff: "0",               
-        stoploss: "0",                
-        trailingStopLoss: "",         
-        disclosedquantity: "0",        
-        duration: "DAY",              
-        ordertag: ""                  
-      };
-
-      console.log(`[BROKER] Placing order — full payload: ${JSON.stringify(orderPayload)}`);
-
-      const response = await axios({
-        method: 'POST',               // ← was GET
-        url: orderUrl,
-        headers: orderHeaders,
-        data: orderPayload            // ← was params
-      });
-
-      console.log("[SUCCESS] Order Server Accepted Request:", response.data);
-      if (response.data?.status === 'true' || response.data?.status === true || response.data?.status === 'success') {
-        return response.data?.data?.orderid;           // ← was response.data.orderId
-      } else {
-        throw new Error(response.data?.message || "Order rejected by broker");
-      }
-    } catch (error: any) {
-      console.error(`[ERROR] Order placement failed for ${symbolInfo.tradingSymbol}:`);
-      if (error.response) {
-        console.error(`Status Code: ${error.response.status}`);
-        console.error("Server Message:", error.response.data);
-        throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing order on Mstock"}`);
-      } else {
-        console.error("Network Error:", error.message);
-        throw new Error(`ERROR: ${error.message || "Unknown error placing order on Mstock"}`);
-      }
-    }
-  }
-
-  static async placeStopLossOrder(symbol: string, quantity: number = 1, triggerPrice: number) {
+  static async placeCoverOrder(symbol: string, quantity: number = 1, entryPrice: number, stopLossPrice: number) {
     const apiKey = process.env.MSTOCK_API_KEY;
     
     let sessionToken = null;
@@ -440,16 +353,16 @@ export class MstockService {
 
     try {
       const orderPayload = {
-        variety: "STOPLOSS",
+        variety: "co",
         tradingsymbol: symbolInfo.tradingSymbol,
         symboltoken: symbolInfo.token,
         exchange: "NFO",
-        transactiontype: "SELL",       
-        ordertype: "STOPLOSS_MARKET",
+        transactiontype: "BUY",       
+        ordertype: "LIMIT",
         quantity: finalQuantity.toString(),
-        producttype: "CARRYFORWARD",
-        price: "0",
-        triggerprice: (Math.round(triggerPrice * 20) / 20).toFixed(2),            
+        producttype: "INTRADAY",
+        price: (Math.round(entryPrice * 20) / 20).toFixed(2),
+        triggerprice: (Math.round(stopLossPrice * 20) / 20).toFixed(2),            
         squareoff: "0",               
         stoploss: "0",                
         trailingStopLoss: "",         
@@ -458,7 +371,7 @@ export class MstockService {
         ordertag: ""                  
       };
 
-      console.log(`[BROKER] Placing SL order — full payload: ${JSON.stringify(orderPayload)}`);
+      console.log(`[BROKER] Placing Cover Order — full payload: ${JSON.stringify(orderPayload)}`);
 
       const response = await axios({
         method: 'POST',
@@ -467,21 +380,21 @@ export class MstockService {
         data: orderPayload
       });
 
-      console.log("[SUCCESS] SL Order Server Accepted Request:", response.data);
+      console.log("[SUCCESS] Broker Accepted Request:", response.data);
       if (response.data?.status === 'true' || response.data?.status === true || response.data?.status === 'success') {
         return response.data?.data?.orderid;
       } else {
-        throw new Error(response.data?.message || "SL Order rejected by broker");
+        throw new Error(response.data?.message || "Order rejected by broker");
       }
     } catch (error: any) {
-      console.error(`[ERROR] SL Order placement failed for ${symbolInfo.tradingSymbol}:`);
+      console.error(`[ERROR] Cover Order placement failed for ${symbolInfo.tradingSymbol}:`);
       if (error.response) {
         console.error(`Status Code: ${error.response.status}`);
         console.error("Server Message:", error.response.data);
-        throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing SL order on Mstock"}`);
+        throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing order on Mstock"}`);
       } else {
         console.error("Network Error:", error.message);
-        throw new Error(`ERROR: ${error.message || "Unknown error placing SL order on Mstock"}`);
+        throw new Error(`ERROR: ${error.message || "Unknown error placing order on Mstock"}`);
       }
     }
   }

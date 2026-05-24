@@ -282,381 +282,981 @@
   "360ONE.NS": {
     "high90d": 1142.9000244140625,
     "avgVol90d": 1084843.9830508474,
-    "lastUpdated": 1779565903182
+    "lastUpdated": 1779602886497
   },
   "AUBANK.NS": {
     "high90d": 1079.550048828125,
     "avgVol90d": 2945379.2711864407,
-    "lastUpdated": 1779565903185
+    "lastUpdated": 1779602886500
   },
   "APLAPOLLO.NS": {
     "high90d": 2252.699951171875,
     "avgVol90d": 691036.7118644068,
-    "lastUpdated": 1779565903186
+    "lastUpdated": 1779602886499
   },
   "ABB.NS": {
     "high90d": 7822.5,
     "avgVol90d": 472727.406779661,
-    "lastUpdated": 1779565903189
+    "lastUpdated": 1779602886504
   },
   "ADANIGREEN.NS": {
     "high90d": 1471,
     "avgVol90d": 4537269.457627119,
-    "lastUpdated": 1779565904014
+    "lastUpdated": 1779602887339
   },
   "ADANIENSOL.NS": {
     "high90d": 1463.6500244140625,
     "avgVol90d": 2957636.2033898304,
-    "lastUpdated": 1779565904018
+    "lastUpdated": 1779602887338
   },
   "ADANIPORTS.NS": {
     "high90d": 1823.9000244140625,
     "avgVol90d": 3288285.779661017,
-    "lastUpdated": 1779565904033
+    "lastUpdated": 1779602887342
   },
   "ADANIENT.NS": {
     "high90d": 2803.10009765625,
     "avgVol90d": 2472229.305084746,
-    "lastUpdated": 1779565904039
+    "lastUpdated": 1779602887361
   },
   "ABCAPITAL.NS": {
     "high90d": 375.95001220703125,
     "avgVol90d": 6890370.966101695,
-    "lastUpdated": 1779565904866
+    "lastUpdated": 1779602888190
   },
   "ADANIPOWER.NS": {
     "high90d": 234.39999389648438,
     "avgVol90d": 43544917.779661015,
-    "lastUpdated": 1779565904866
+    "lastUpdated": 1779602888189
   },
   "AMBER.NS": {
     "high90d": 8974,
     "avgVol90d": 405499.8813559322,
-    "lastUpdated": 1779565904867
+    "lastUpdated": 1779602888193
   },
   "ALKEM.NS": {
     "high90d": 5781.5,
     "avgVol90d": 113264.67796610169,
-    "lastUpdated": 1779565904869
+    "lastUpdated": 1779602888199
   },
   "ANGELONE.NS": {
     "high90d": 345.6499938964844,
     "avgVol90d": 10587674.372881357,
-    "lastUpdated": 1779565905708
+    "lastUpdated": 1779602889038
   },
   "APOLLOHOSP.NS": {
     "high90d": 8440.5,
     "avgVol90d": 447581.9661016949,
-    "lastUpdated": 1779565905718
+    "lastUpdated": 1779602889296
   },
   "ASHOKLEY.NS": {
     "high90d": 214.10000610351562,
     "avgVol90d": 24373952.13559322,
-    "lastUpdated": 1779565905718
+    "lastUpdated": 1779602889069
   },
   "AMBUJACEM.NS": {
     "high90d": 518.6500244140625,
     "avgVol90d": 3369011.8983050846,
-    "lastUpdated": 1779565905720
+    "lastUpdated": 1779602889049
   },
   "DMART.NS": {
     "high90d": 4644,
     "avgVol90d": 592249.1525423729,
-    "lastUpdated": 1779565906543
+    "lastUpdated": 1779602890127
   },
   "ASIANPAINT.NS": {
     "high90d": 2665.699951171875,
     "avgVol90d": 1266562.152542373,
-    "lastUpdated": 1779565906575
+    "lastUpdated": 1779602890154
   },
   "AUROPHARMA.NS": {
     "high90d": 1550,
     "avgVol90d": 1540543.3389830508,
-    "lastUpdated": 1779565906581
+    "lastUpdated": 1779602890151
   },
   "ASTRAL.NS": {
     "high90d": 1768.699951171875,
     "avgVol90d": 791777.6779661017,
-    "lastUpdated": 1779565906584
+    "lastUpdated": 1779602890151
   },
   "BSE.NS": {
     "high90d": 4298.89990234375,
     "avgVol90d": 4402044.847457627,
-    "lastUpdated": 1779565907414
+    "lastUpdated": 1779602890985
   },
   "BAJAJ-AUTO.NS": {
     "high90d": 10785,
     "avgVol90d": 388400.6271186441,
-    "lastUpdated": 1779565907424
+    "lastUpdated": 1779602890993
   },
   "BAJFINANCE.NS": {
     "high90d": 1046,
     "avgVol90d": 9308919.322033899,
-    "lastUpdated": 1779565907436
+    "lastUpdated": 1779602891007
   },
   "AXISBANK.NS": {
     "high90d": 1405.699951171875,
     "avgVol90d": 7483779.338983051,
-    "lastUpdated": 1779565907450
+    "lastUpdated": 1779602891014
   },
   "BANDHANBNK.NS": {
     "high90d": 212.66000366210938,
     "avgVol90d": 13363919.305084746,
-    "lastUpdated": 1779565908298
+    "lastUpdated": 1779602891843
   },
   "BAJAJFINSV.NS": {
     "high90d": 2074.89990234375,
     "avgVol90d": 1372373.847457627,
-    "lastUpdated": 1779565908298
+    "lastUpdated": 1779602891857
   },
   "BANKBARODA.NS": {
     "high90d": 325.5,
     "avgVol90d": 11257677.254237289,
-    "lastUpdated": 1779565908300
+    "lastUpdated": 1779602891866
   },
   "BAJAJHLDNG.NS": {
     "high90d": 11632,
     "avgVol90d": 55703.27118644068,
-    "lastUpdated": 1779565908313
+    "lastUpdated": 1779602891872
   },
   "BDL.NS": {
     "high90d": 1481.199951171875,
     "avgVol90d": 1523446.0169491526,
-    "lastUpdated": 1779565909146
+    "lastUpdated": 1779602892730
   },
   "BHARATFORG.NS": {
     "high90d": 2044,
     "avgVol90d": 1436160.440677966,
-    "lastUpdated": 1779565909171
+    "lastUpdated": 1779602892734
   },
   "BEL.NS": {
     "high90d": 473.45001220703125,
     "avgVol90d": 16142079.525423728,
-    "lastUpdated": 1779565909177
+    "lastUpdated": 1779602892728
   },
   "BANKINDIA.NS": {
     "high90d": 178.36000061035156,
     "avgVol90d": 11200639.288135594,
-    "lastUpdated": 1779565909206
+    "lastUpdated": 1779602892727
   },
   "BIOCON.NS": {
     "high90d": 436.8999938964844,
     "avgVol90d": 4260911.72881356,
-    "lastUpdated": 1779565910054
+    "lastUpdated": 1779602893589
   },
   "BHEL.NS": {
     "high90d": 417.8999938964844,
     "avgVol90d": 16945739.542372882,
-    "lastUpdated": 1779565910055
+    "lastUpdated": 1779602893576
   },
   "BHARTIARTL.NS": {
     "high90d": 2000.5,
     "avgVol90d": 10213179.813559322,
-    "lastUpdated": 1779565910062
+    "lastUpdated": 1779602893580
   },
   "BPCL.NS": {
     "high90d": 389.8999938964844,
     "avgVol90d": 13456490.237288136,
-    "lastUpdated": 1779565910068
+    "lastUpdated": 1779602893585
   },
   "BLUESTARCO.NS": {
     "high90d": 1990.800048828125,
     "avgVol90d": 677511.6779661017,
-    "lastUpdated": 1779565910912
+    "lastUpdated": 1779602894429
   },
   "BRITANNIA.NS": {
     "high90d": 6208.5,
     "avgVol90d": 447823.3559322034,
-    "lastUpdated": 1779565910914
+    "lastUpdated": 1779602894435
   },
   "BOSCHLTD.NS": {
     "high90d": 38855,
     "avgVol90d": 39518.27118644068,
-    "lastUpdated": 1779565910923
+    "lastUpdated": 1779602894465
   },
   "CGPOWER.NS": {
     "high90d": 886.7999877929688,
     "avgVol90d": 3376679.8305084747,
-    "lastUpdated": 1779565910941
+    "lastUpdated": 1779602894453
   },
   "CDSL.NS": {
     "high90d": 1401.0999755859375,
     "avgVol90d": 2178074.186440678,
-    "lastUpdated": 1779565911772
+    "lastUpdated": 1779602895307
   },
   "CANBK.NS": {
     "high90d": 162.88999938964844,
     "avgVol90d": 24405770.610169493,
-    "lastUpdated": 1779565911786
+    "lastUpdated": 1779602895312
   },
   "CHOLAFIN.NS": {
     "high90d": 1774.5999755859375,
     "avgVol90d": 2117122.033898305,
-    "lastUpdated": 1779565911791
+    "lastUpdated": 1779602895326
   },
   "CIPLA.NS": {
     "high90d": 1444.5,
     "avgVol90d": 1922781.06779661,
-    "lastUpdated": 1779565911798
+    "lastUpdated": 1779602895319
   },
   "COCHINSHIP.NS": {
     "high90d": 1842.800048828125,
     "avgVol90d": 1973287.8983050848,
-    "lastUpdated": 1779565912629
+    "lastUpdated": 1779602896166
   },
   "COALINDIA.NS": {
     "high90d": 491.25,
     "avgVol90d": 12658362.559322033,
-    "lastUpdated": 1779565912634
+    "lastUpdated": 1779602896178
   },
   "COLPAL.NS": {
     "high90d": 2301.60009765625,
     "avgVol90d": 449698.0169491525,
-    "lastUpdated": 1779565912643
+    "lastUpdated": 1779602896200
   },
   "COFORGE.NS": {
     "high90d": 1447,
     "avgVol90d": 4069675.474576271,
-    "lastUpdated": 1779565912653
+    "lastUpdated": 1779602896190
   },
   "CAMS.NS": {
     "high90d": 844.9000244140625,
     "avgVol90d": 1810554.4915254237,
-    "lastUpdated": 1779565913479
+    "lastUpdated": 1779602897032
   },
   "CROMPTON.NS": {
     "high90d": 310.5,
     "avgVol90d": 3997933.559322034,
-    "lastUpdated": 1779565913485
+    "lastUpdated": 1779602897028
   },
   "CUMMINSIND.NS": {
     "high90d": 5470.5,
     "avgVol90d": 713251.2033898305,
-    "lastUpdated": 1779565913508
+    "lastUpdated": 1779602897047
   },
   "CONCOR.NS": {
     "high90d": 537,
     "avgVol90d": 1523834.3559322034,
-    "lastUpdated": 1779565913510
+    "lastUpdated": 1779602897053
   },
   "DELHIVERY.NS": {
     "high90d": 487.5,
     "avgVol90d": 2658526.0169491526,
-    "lastUpdated": 1779565914330
+    "lastUpdated": 1779602897880
   },
   "DABUR.NS": {
     "high90d": 525.5,
     "avgVol90d": 2084394.1016949152,
-    "lastUpdated": 1779565914363
+    "lastUpdated": 1779602897903
   },
   "DLF.NS": {
     "high90d": 634,
     "avgVol90d": 4610655.898305085,
-    "lastUpdated": 1779565914380
+    "lastUpdated": 1779602897895
   },
   "DALBHARAT.NS": {
     "high90d": 2108.10009765625,
     "avgVol90d": 322447.6271186441,
-    "lastUpdated": 1779565914404
+    "lastUpdated": 1779602897884
   },
   "ETERNAL.NS": {
     "high90d": 271.75,
     "avgVol90d": 49239105.423728816,
-    "lastUpdated": 1779565915223
+    "lastUpdated": 1779602898723
   },
   "DIXON.NS": {
     "high90d": 11860,
     "avgVol90d": 752961.8813559322,
-    "lastUpdated": 1779565915233
+    "lastUpdated": 1779602898733
   },
   "DRREDDY.NS": {
     "high90d": 1375.9000244140625,
     "avgVol90d": 2486317.084745763,
-    "lastUpdated": 1779565915247
+    "lastUpdated": 1779602898751
   },
   "DIVISLAB.NS": {
     "high90d": 6968,
     "avgVol90d": 304551.6271186441,
-    "lastUpdated": 1779565915249
+    "lastUpdated": 1779602898752
   },
   "NYKAA.NS": {
     "high90d": 285.6000061035156,
     "avgVol90d": 4781589.389830508,
-    "lastUpdated": 1779565916072
+    "lastUpdated": 1779602899574
   },
   "FORCEMOT.NS": {
     "high90d": 25800,
     "avgVol90d": 125239.84745762713,
-    "lastUpdated": 1779565916079
+    "lastUpdated": 1779602899579
   },
   "EICHERMOT.NS": {
     "high90d": 8230,
     "avgVol90d": 590437.0169491526,
-    "lastUpdated": 1779565916101
+    "lastUpdated": 1779602899611
   },
   "EXIDEIND.NS": {
     "high90d": 379.8999938964844,
     "avgVol90d": 2702424.694915254,
-    "lastUpdated": 1779565916104
+    "lastUpdated": 1779602899605
   },
   "FORTIS.NS": {
     "high90d": 992.7000122070312,
     "avgVol90d": 1562881.9830508474,
-    "lastUpdated": 1779565916930
+    "lastUpdated": 1779602900438
   },
   "GMRAIRPORT.NS": {
     "high90d": 103.02999877929688,
     "avgVol90d": 14935598.38983051,
-    "lastUpdated": 1779565916946
+    "lastUpdated": 1779602900435
   },
   "GAIL.NS": {
     "high90d": 171.4600067138672,
     "avgVol90d": 13369243.508474575,
-    "lastUpdated": 1779565916955
+    "lastUpdated": 1779602900463
   },
   "GLENMARK.NS": {
     "high90d": 2474,
     "avgVol90d": 683777.4237288135,
-    "lastUpdated": 1779565916977
+    "lastUpdated": 1779602900471
   },
   "GODREJPROP.NS": {
     "high90d": 1951.9000244140625,
     "avgVol90d": 1170208.6440677966,
-    "lastUpdated": 1779565917808
+    "lastUpdated": 1779602901298
   },
   "GODFRYPHLP.NS": {
     "high90d": 2497.5,
     "avgVol90d": 1157320.186440678,
-    "lastUpdated": 1779565917823
+    "lastUpdated": 1779602901322
   },
   "GODREJCP.NS": {
     "high90d": 1240.4000244140625,
     "avgVol90d": 1748925.593220339,
-    "lastUpdated": 1779565917826
+    "lastUpdated": 1779602901396
   },
   "GRASIM.NS": {
     "high90d": 3187.60009765625,
     "avgVol90d": 1081964.559322034,
-    "lastUpdated": 1779565918008
+    "lastUpdated": 1779602901324
   },
   "HDFCAMC.NS": {
     "high90d": 2872.39990234375,
     "avgVol90d": 1170414.5762711863,
-    "lastUpdated": 1779565918837
+    "lastUpdated": 1779602902226
   },
   "HDFCLIFE.NS": {
     "high90d": 745.75,
     "avgVol90d": 4798858.27118644,
-    "lastUpdated": 1779565918838
+    "lastUpdated": 1779602902226
   },
   "HCLTECH.NS": {
     "high90d": 1474.9000244140625,
     "avgVol90d": 4420546.423728813,
-    "lastUpdated": 1779565918865
+    "lastUpdated": 1779602902246
   },
   "HDFCBANK.NS": {
     "high90d": 927.9500122070312,
     "avgVol90d": 45564924.152542375,
-    "lastUpdated": 1779565918883
+    "lastUpdated": 1779602902245
+  },
+  "HAL.NS": {
+    "high90d": 4836.2998046875,
+    "avgVol90d": 1554885.8983050848,
+    "lastUpdated": 1779602903078
+  },
+  "HEROMOTOCO.NS": {
+    "high90d": 5840,
+    "avgVol90d": 585375.7118644068,
+    "lastUpdated": 1779602903090
+  },
+  "HAVELLS.NS": {
+    "high90d": 1426,
+    "avgVol90d": 1141780.7288135593,
+    "lastUpdated": 1779602903107
+  },
+  "HINDALCO.NS": {
+    "high90d": 1115,
+    "avgVol90d": 6207127.288135593,
+    "lastUpdated": 1779602903109
+  },
+  "POWERINDIA.NS": {
+    "high90d": 36750,
+    "avgVol90d": 140589.64406779662,
+    "lastUpdated": 1779602903950
+  },
+  "HINDZINC.NS": {
+    "high90d": 678.25,
+    "avgVol90d": 6670241.830508474,
+    "lastUpdated": 1779602903958
+  },
+  "HINDUNILVR.NS": {
+    "high90d": 2408,
+    "avgVol90d": 2000318.2881355933,
+    "lastUpdated": 1779602903974
+  },
+  "HINDPETRO.NS": {
+    "high90d": 454.70001220703125,
+    "avgVol90d": 9641728.491525425,
+    "lastUpdated": 1779602903976
+  },
+  "HYUNDAI.NS": {
+    "high90d": 2301.300048828125,
+    "avgVol90d": 1019639.1355932204,
+    "lastUpdated": 1779602904805
+  },
+  "ICICIGI.NS": {
+    "high90d": 1967.9000244140625,
+    "avgVol90d": 725133.8983050848,
+    "lastUpdated": 1779602904808
+  },
+  "ICICIPRULI.NS": {
+    "high90d": 677.5499877929688,
+    "avgVol90d": 1552014.0847457626,
+    "lastUpdated": 1779602904812
+  },
+  "ICICIBANK.NS": {
+    "high90d": 1410,
+    "avgVol90d": 18995274.40677966,
+    "lastUpdated": 1779602904826
+  },
+  "IDFCFIRSTB.NS": {
+    "high90d": 75.16000366210938,
+    "avgVol90d": 47526449.72881356,
+    "lastUpdated": 1779602905661
+  },
+  "IEX.NS": {
+    "high90d": 137.33999633789062,
+    "avgVol90d": 7066034.847457627,
+    "lastUpdated": 1779602905663
+  },
+  "INDIANB.NS": {
+    "high90d": 1000.9000244140625,
+    "avgVol90d": 2295497.0677966103,
+    "lastUpdated": 1779602905671
+  },
+  "ITC.NS": {
+    "high90d": 328.1000061035156,
+    "avgVol90d": 20416052.15254237,
+    "lastUpdated": 1779602905715
+  },
+  "IREDA.NS": {
+    "high90d": 142.85000610351562,
+    "avgVol90d": 9955009.898305085,
+    "lastUpdated": 1779602906534
+  },
+  "IRFC.NS": {
+    "high90d": 112.5,
+    "avgVol90d": 17060409.20338983,
+    "lastUpdated": 1779602906555
+  },
+  "INDUSTOWER.NS": {
+    "high90d": 476.75,
+    "avgVol90d": 5859600.033898305,
+    "lastUpdated": 1779602906558
+  },
+  "IOC.NS": {
+    "high90d": 188.9600067138672,
+    "avgVol90d": 20084497.101694915,
+    "lastUpdated": 1779602906566
+  },
+  "INOXWIND.NS": {
+    "high90d": 108.2699966430664,
+    "avgVol90d": 15112512.338983051,
+    "lastUpdated": 1779602907387
+  },
+  "NAUKRI.NS": {
+    "high90d": 1084.9000244140625,
+    "avgVol90d": 2097902.4915254237,
+    "lastUpdated": 1779602907405
+  },
+  "INDUSINDBK.NS": {
+    "high90d": 968.8499755859375,
+    "avgVol90d": 3308494.2033898304,
+    "lastUpdated": 1779602907415
+  },
+  "INFY.NS": {
+    "high90d": 1376.9000244140625,
+    "avgVol90d": 13568550.644067796,
+    "lastUpdated": 1779602907420
+  },
+  "INDIGO.NS": {
+    "high90d": 4976.2998046875,
+    "avgVol90d": 1648716.06779661,
+    "lastUpdated": 1779602908259
+  },
+  "JSWENERGY.NS": {
+    "high90d": 585.6500244140625,
+    "avgVol90d": 4010835.2711864407,
+    "lastUpdated": 1779602908265
+  },
+  "JSWSTEEL.NS": {
+    "high90d": 1314,
+    "avgVol90d": 2021177.1355932204,
+    "lastUpdated": 1779602908271
+  },
+  "JINDALSTEL.NS": {
+    "high90d": 1306.199951171875,
+    "avgVol90d": 1439089.372881356,
+    "lastUpdated": 1779602908274
+  },
+  "KPITTECH.NS": {
+    "high90d": 841.9000244140625,
+    "avgVol90d": 2370454.5084745763,
+    "lastUpdated": 1779602909098
+  },
+  "JUBLFOOD.NS": {
+    "high90d": 537.6500244140625,
+    "avgVol90d": 3268175.525423729,
+    "lastUpdated": 1779602909105
+  },
+  "KEI.NS": {
+    "high90d": 5325,
+    "avgVol90d": 497402.28813559323,
+    "lastUpdated": 1779602909122
+  },
+  "JIOFIN.NS": {
+    "high90d": 260.3999938964844,
+    "avgVol90d": 19535222.050847456,
+    "lastUpdated": 1779602909138
+  },
+  "KAYNES.NS": {
+    "high90d": 4538.60009765625,
+    "avgVol90d": 1657195.627118644,
+    "lastUpdated": 1779602909961
+  },
+  "KFINTECH.NS": {
+    "high90d": 1029,
+    "avgVol90d": 1127309.779661017,
+    "lastUpdated": 1779602909962
+  },
+  "KALYANKJIL.NS": {
+    "high90d": 452.6000061035156,
+    "avgVol90d": 6040446.355932203,
+    "lastUpdated": 1779602909964
+  },
+  "KOTAKBANK.NS": {
+    "high90d": 432.45001220703125,
+    "avgVol90d": 20227217.59322034,
+    "lastUpdated": 1779602909991
+  },
+  "LTM.NS": {
+    "high90d": 4876,
+    "avgVol90d": 378103.57627118647,
+    "lastUpdated": 1779602910813
+  },
+  "LTF.NS": {
+    "high90d": 310.5,
+    "avgVol90d": 7023853.949152542,
+    "lastUpdated": 1779602910844
+  },
+  "LT.NS": {
+    "high90d": 4440,
+    "avgVol90d": 3716346.9830508474,
+    "lastUpdated": 1779602910849
+  },
+  "LICHSGFIN.NS": {
+    "high90d": 598.2000122070312,
+    "avgVol90d": 1880264.0169491526,
+    "lastUpdated": 1779602910849
+  },
+  "LICI.NS": {
+    "high90d": 896.5,
+    "avgVol90d": 1805819.847457627,
+    "lastUpdated": 1779602911673
+  },
+  "LODHA.NS": {
+    "high90d": 1085.4000244140625,
+    "avgVol90d": 2991879.881355932,
+    "lastUpdated": 1779602911674
+  },
+  "LAURUSLABS.NS": {
+    "high90d": 1373.9000244140625,
+    "avgVol90d": 2022849.220338983,
+    "lastUpdated": 1779602911686
+  },
+  "LUPIN.NS": {
+    "high90d": 2494,
+    "avgVol90d": 1220957.2711864407,
+    "lastUpdated": 1779602911707
+  },
+  "MANKIND.NS": {
+    "high90d": 2638.60009765625,
+    "avgVol90d": 680123.3898305085,
+    "lastUpdated": 1779602912526
+  },
+  "MANAPPURAM.NS": {
+    "high90d": 326.95001220703125,
+    "avgVol90d": 5194335.677966102,
+    "lastUpdated": 1779602912552
+  },
+  "MARICO.NS": {
+    "high90d": 848.7999877929688,
+    "avgVol90d": 1889698.8983050848,
+    "lastUpdated": 1779602912560
+  },
+  "M&M.NS": {
+    "high90d": 3507,
+    "avgVol90d": 3293349.118644068,
+    "lastUpdated": 1779602912565
+  },
+  "MAXHEALTH.NS": {
+    "high90d": 1112.550048828125,
+    "avgVol90d": 2759598.7118644067,
+    "lastUpdated": 1779602913395
+  },
+  "MAZDOCK.NS": {
+    "high90d": 2810,
+    "avgVol90d": 2197368.813559322,
+    "lastUpdated": 1779602913401
+  },
+  "MFSL.NS": {
+    "high90d": 1892.5,
+    "avgVol90d": 801136.0169491526,
+    "lastUpdated": 1779602913418
+  },
+  "MARUTI.NS": {
+    "high90d": 15224,
+    "avgVol90d": 535449.8983050848,
+    "lastUpdated": 1779602913421
+  },
+  "MCX.NS": {
+    "high90d": 3480,
+    "avgVol90d": 3361902.13559322,
+    "lastUpdated": 1779602914255
+  },
+  "MOTILALOFS.NS": {
+    "high90d": 902.5,
+    "avgVol90d": 1131994.1186440678,
+    "lastUpdated": 1779602914259
+  },
+  "MUTHOOTFIN.NS": {
+    "high90d": 3678.5,
+    "avgVol90d": 964814.3728813559,
+    "lastUpdated": 1779602914260
+  },
+  "MPHASIS.NS": {
+    "high90d": 2479,
+    "avgVol90d": 625152.2542372881,
+    "lastUpdated": 1779602914264
+  },
+  "NHPC.NS": {
+    "high90d": 86.83000183105469,
+    "avgVol90d": 16719000.118644068,
+    "lastUpdated": 1779602915098
+  },
+  "NBCC.NS": {
+    "high90d": 101.94999694824219,
+    "avgVol90d": 11522945.847457627,
+    "lastUpdated": 1779602915101
+  },
+  "NMDC.NS": {
+    "high90d": 94.25,
+    "avgVol90d": 24301155.610169493,
+    "lastUpdated": 1779602915104
+  },
+  "NTPC.NS": {
+    "high90d": 414.3999938964844,
+    "avgVol90d": 12333527.728813559,
+    "lastUpdated": 1779602915110
+  },
+  "NUVAMA.NS": {
+    "high90d": 1647.9000244140625,
+    "avgVol90d": 528155.5084745763,
+    "lastUpdated": 1779602915935
+  },
+  "NAM-INDIA.NS": {
+    "high90d": 1125,
+    "avgVol90d": 1075059.0847457626,
+    "lastUpdated": 1779602915951
+  },
+  "NESTLEIND.NS": {
+    "high90d": 1498.0999755859375,
+    "avgVol90d": 1845230.8813559322,
+    "lastUpdated": 1779602915957
+  },
+  "NATIONALUM.NS": {
+    "high90d": 445.1499938964844,
+    "avgVol90d": 12847535.474576272,
+    "lastUpdated": 1779602915959
+  },
+  "PAYTM.NS": {
+    "high90d": 1223,
+    "avgVol90d": 2852732.305084746,
+    "lastUpdated": 1779602916786
+  },
+  "OBEROIRLTY.NS": {
+    "high90d": 1754,
+    "avgVol90d": 576859.8305084746,
+    "lastUpdated": 1779602916790
+  },
+  "OIL.NS": {
+    "high90d": 531,
+    "avgVol90d": 6437081.305084745,
+    "lastUpdated": 1779602916798
+  },
+  "ONGC.NS": {
+    "high90d": 307.5,
+    "avgVol90d": 21980824.01694915,
+    "lastUpdated": 1779602916812
+  },
+  "PGEL.NS": {
+    "high90d": 634.6500244140625,
+    "avgVol90d": 3776112.6101694917,
+    "lastUpdated": 1779602917638
+  },
+  "POLICYBZR.NS": {
+    "high90d": 1845.5,
+    "avgVol90d": 1749577.4915254237,
+    "lastUpdated": 1779602917638
+  },
+  "PIIND.NS": {
+    "high90d": 3194.10009765625,
+    "avgVol90d": 324206.16949152545,
+    "lastUpdated": 1779602917656
+  },
+  "OFSS.NS": {
+    "high90d": 9999,
+    "avgVol90d": 277577.4406779661,
+    "lastUpdated": 1779602917684
+  },
+  "PNBHOUSING.NS": {
+    "high90d": 1095.800048828125,
+    "avgVol90d": 1455385.9661016949,
+    "lastUpdated": 1779602918518
+  },
+  "PAGEIND.NS": {
+    "high90d": 40490,
+    "avgVol90d": 28017.322033898305,
+    "lastUpdated": 1779602918530
+  },
+  "PATANJALI.NS": {
+    "high90d": 537.5999755859375,
+    "avgVol90d": 2134790.4237288134,
+    "lastUpdated": 1779602918530
+  },
+  "PERSISTENT.NS": {
+    "high90d": 5605.39990234375,
+    "avgVol90d": 793704.3559322034,
+    "lastUpdated": 1779602918531
+  },
+  "POLYCAB.NS": {
+    "high90d": 9316.5,
+    "avgVol90d": 535328.1694915254,
+    "lastUpdated": 1779602919363
+  },
+  "PETRONET.NS": {
+    "high90d": 326.3999938964844,
+    "avgVol90d": 4995062.762711864,
+    "lastUpdated": 1779602919377
+  },
+  "PFC.NS": {
+    "high90d": 486.5,
+    "avgVol90d": 8560162.271186441,
+    "lastUpdated": 1779602919379
+  },
+  "PIDILITIND.NS": {
+    "high90d": 1525,
+    "avgVol90d": 937558.3728813559,
+    "lastUpdated": 1779602919381
+  },
+  "PREMIERENE.NS": {
+    "high90d": 1054.4000244140625,
+    "avgVol90d": 2446408.525423729,
+    "lastUpdated": 1779602920211
+  },
+  "POWERGRID.NS": {
+    "high90d": 324.95001220703125,
+    "avgVol90d": 14506271.93220339,
+    "lastUpdated": 1779602920223
+  },
+  "PRESTIGE.NS": {
+    "high90d": 1514.699951171875,
+    "avgVol90d": 939531.4237288135,
+    "lastUpdated": 1779602920223
+  },
+  "PNB.NS": {
+    "high90d": 132.72999572753906,
+    "avgVol90d": 21186553.01694915,
+    "lastUpdated": 1779602920227
+  },
+  "RVNL.NS": {
+    "high90d": 324,
+    "avgVol90d": 7744765.915254237,
+    "lastUpdated": 1779602921056
+  },
+  "RBLBANK.NS": {
+    "high90d": 349.8999938964844,
+    "avgVol90d": 5506475.186440678,
+    "lastUpdated": 1779602921060
+  },
+  "RECLTD.NS": {
+    "high90d": 387.45001220703125,
+    "avgVol90d": 7781664.220338983,
+    "lastUpdated": 1779602921074
+  },
+  "RELIANCE.NS": {
+    "high90d": 1473.4000244140625,
+    "avgVol90d": 19690838.423728812,
+    "lastUpdated": 1779602921082
+  },
+  "SBICARD.NS": {
+    "high90d": 795,
+    "avgVol90d": 1490120.5762711863,
+    "lastUpdated": 1779602921913
+  },
+  "SBILIFE.NS": {
+    "high90d": 2132,
+    "avgVol90d": 1327957.1186440678,
+    "lastUpdated": 1779602921917
+  },
+  "SHREECEM.NS": {
+    "high90d": 27045,
+    "avgVol90d": 31212.01694915254,
+    "lastUpdated": 1779602921928
+  },
+  "SRF.NS": {
+    "high90d": 2832.10009765625,
+    "avgVol90d": 627123.3050847457,
+    "lastUpdated": 1779602921935
+  },
+  "SAMMAANCAP.NS": {
+    "high90d": 162.64999389648438,
+    "avgVol90d": 18208009.898305085,
+    "lastUpdated": 1779602922766
+  },
+  "MOTHERSON.NS": {
+    "high90d": 139.00999450683594,
+    "avgVol90d": 22647873.898305085,
+    "lastUpdated": 1779602922782
+  },
+  "SHRIRAMFIN.NS": {
+    "high90d": 1108,
+    "avgVol90d": 7813994.542372881,
+    "lastUpdated": 1779602922784
+  },
+  "SIEMENS.NS": {
+    "high90d": 3930,
+    "avgVol90d": 478553.7966101695,
+    "lastUpdated": 1779602922789
+  },
+  "SONACOMS.NS": {
+    "high90d": 614,
+    "avgVol90d": 2345616.1016949154,
+    "lastUpdated": 1779602923618
+  },
+  "SOLARINDS.NS": {
+    "high90d": 18699,
+    "avgVol90d": 197619.2372881356,
+    "lastUpdated": 1779602923643
+  },
+  "SBIN.NS": {
+    "high90d": 1234.699951171875,
+    "avgVol90d": 17960885.22033898,
+    "lastUpdated": 1779602923647
+  },
+  "SAIL.NS": {
+    "high90d": 209.6999969482422,
+    "avgVol90d": 28222562.559322033,
+    "lastUpdated": 1779602923651
+  },
+  "SWIGGY.NS": {
+    "high90d": 324.8999938964844,
+    "avgVol90d": 10838957.355932204,
+    "lastUpdated": 1779602924475
+  },
+  "SUZLON.NS": {
+    "high90d": 58.060001373291016,
+    "avgVol90d": 92718838.50847457,
+    "lastUpdated": 1779602924498
+  },
+  "SUNPHARMA.NS": {
+    "high90d": 1916.5999755859375,
+    "avgVol90d": 3939592.254237288,
+    "lastUpdated": 1779602924499
+  },
+  "SUPREMEIND.NS": {
+    "high90d": 4074.800048828125,
+    "avgVol90d": 303233.71186440677,
+    "lastUpdated": 1779602924505
+  },
+  "TATAELXSI.NS": {
+    "high90d": 4873,
+    "avgVol90d": 331240.57627118647,
+    "lastUpdated": 1779602925350
+  },
+  "TCS.NS": {
+    "high90d": 2704,
+    "avgVol90d": 4172812.7966101696,
+    "lastUpdated": 1779602925352
+  },
+  "TATACONSUM.NS": {
+    "high90d": 1282.699951171875,
+    "avgVol90d": 1915049.440677966,
+    "lastUpdated": 1779602925364
+  },
+  "TVSMOTOR.NS": {
+    "high90d": 3970,
+    "avgVol90d": 1040900.6779661017,
+    "lastUpdated": 1779602925372
+  },
+  "TMPV.NS": {
+    "high90d": 394.04998779296875,
+    "avgVol90d": 10959153.661016949,
+    "lastUpdated": 1779602926196
+  },
+  "TECHM.NS": {
+    "high90d": 1531.300048828125,
+    "avgVol90d": 2507638.8474576273,
+    "lastUpdated": 1779602926217
+  },
+  "TATASTEEL.NS": {
+    "high90d": 224.39999389648438,
+    "avgVol90d": 32400468.542372882,
+    "lastUpdated": 1779602926218
+  },
+  "TATAPOWER.NS": {
+    "high90d": 464.8999938964844,
+    "avgVol90d": 8429369.779661017,
+    "lastUpdated": 1779602926233
+  },
+  "PHOENIXLTD.NS": {
+    "high90d": 1855.9000244140625,
+    "avgVol90d": 518517.72881355934,
+    "lastUpdated": 1779602927070
+  },
+  "TITAN.NS": {
+    "high90d": 4605,
+    "avgVol90d": 1220076.406779661,
+    "lastUpdated": 1779602927073
+  },
+  "INDHOTEL.NS": {
+    "high90d": 685,
+    "avgVol90d": 2856978.7288135593,
+    "lastUpdated": 1779602927083
+  },
+  "FEDERALBNK.NS": {
+    "high90d": 302,
+    "avgVol90d": 8729844.186440678,
+    "lastUpdated": 1779602927092
+  },
+  "TIINDIA.NS": {
+    "high90d": 3153,
+    "avgVol90d": 449078.9830508475,
+    "lastUpdated": 1779602927923
+  },
+  "UNOMINDA.NS": {
+    "high90d": 1238,
+    "avgVol90d": 1055171.1694915255,
+    "lastUpdated": 1779602927936
+  },
+  "TORNTPHARM.NS": {
+    "high90d": 4555.10009765625,
+    "avgVol90d": 363165.57627118647,
+    "lastUpdated": 1779602927944
+  },
+  "TRENT.NS": {
+    "high90d": 4498,
+    "avgVol90d": 1114920.8983050848,
+    "lastUpdated": 1779602927947
   }
 }

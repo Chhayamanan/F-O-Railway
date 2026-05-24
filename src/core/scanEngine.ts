@@ -47,10 +47,9 @@ export class ScanEngine {
          const live = liveData[plainSymbol];
          if (!live || live.price === 0) continue;
          
-         const future = futureData[plainSymbol];
-         if (!future || future.price === 0) continue;
+         const future = futureData ? futureData[plainSymbol] : null;
 
-         const ltp = future.price;
+         const ltp = future && future.price > 0 ? future.price : live.price;
          const spotPrice = live.price;
          const latestVolume = live.volume;
          
@@ -61,7 +60,7 @@ export class ScanEngine {
          const isCeoDesk = isScanScope;
          
          if (isScanScope) {
-            const lotSize = future.lotSize || this.MOCK_LOT_SIZES[plainSymbol] || 500;
+            const lotSize = future?.lotSize || this.MOCK_LOT_SIZES[plainSymbol] || 500;
             const contractValue = ltp * lotSize;
             const riskValue = contractValue * 0.05; // 5% stop loss risk
             
@@ -104,23 +103,15 @@ export class ScanEngine {
 
       if (action === 'BUY') {
          const orderPrice = item.ltp * 0.995;
+         const slPrice = item.ltp * 0.95;
          try {
              // Buy 1 lot (this implies FNO, but we use the lotSize equity equivalent as proxy due to API instrument limits)
-             await MstockService.placeOrder(symbol, item.lotSize || 1, orderPrice);
-             
-             // Place 5% Stop Loss Order
-             const slPrice = item.ltp * 0.95;
-             try {
-                await MstockService.placeStopLossOrder(symbol, item.lotSize || 1, slPrice);
-             } catch (slErr: any) {
-                console.error(`[CEO DESK] Buy succeeded but SL failed for ${symbol}: ${slErr.message}`);
-                // Don't fail the whole block if Buy succeeded, but maybe note it.
-             }
+             await MstockService.placeCoverOrder(symbol, item.lotSize || 1, orderPrice, slPrice);
 
              this.ceoDeskItems.splice(index, 1);
-             return { success: true, message: `Placed Buy Order for ${symbol} @ RS ${orderPrice.toFixed(2)} and SL @ RS ${slPrice.toFixed(2)}` };
+             return { success: true, message: `Placed Cover Order for ${symbol} @ RS ${orderPrice.toFixed(2)} and SL @ RS ${slPrice.toFixed(2)}` };
          } catch (e: any) {
-             console.error(`[CEO DESK] Buy failed for ${symbol}: ${e.message}`);
+             console.error(`[CEO DESK] Cover Order failed for ${symbol}: ${e.message}`);
              return { success: false, message: e.message };
          }
       } else if (action === 'HOLD') {
