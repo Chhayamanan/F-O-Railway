@@ -31,6 +31,10 @@ function App() {
   const [futBaseVolMultiplier, setFutBaseVolMultiplier] = useState<number>(2.0);
   const [optHighDistance, setOptHighDistance] = useState<number>(0.98);
   const [optBaseVolMultiplier, setOptBaseVolMultiplier] = useState<number>(2.0);
+  const [mtfHighDistance, setMtfHighDistance] = useState<number>(1.0);
+  const [mtfBaseVolMultiplier, setMtfBaseVolMultiplier] = useState<number>(3.0);
+  const [intradayHighDistance, setIntradayHighDistance] = useState<number>(0.99);
+  const [intradayBaseVolMultiplier, setIntradayBaseVolMultiplier] = useState<number>(2.5);
   const [portfolio, setPortfolio] = useState<any[]>([]);
   
   const fetchStatus = async () => {
@@ -76,7 +80,11 @@ function App() {
         futHighDist: futHighDistance.toString(),
         futVolMult: futBaseVolMultiplier.toString(),
         optHighDist: optHighDistance.toString(),
-        optVolMult: optBaseVolMultiplier.toString()
+        optVolMult: optBaseVolMultiplier.toString(),
+        mtfHighDist: mtfHighDistance.toString(),
+        mtfVolMult: mtfBaseVolMultiplier.toString(),
+        intradayHighDist: intradayHighDistance.toString(),
+        intradayVolMult: intradayBaseVolMultiplier.toString()
       });
       const res = await fetch(`/api/scan/results?${queryParams.toString()}`);
       const data = await res.json();
@@ -193,19 +201,15 @@ function App() {
              
              <button 
                 onClick={() => setIsAutoScanning(!isAutoScanning)}
-                className={`px-6 py-2 rounded-lg flex items-center gap-2 transition-all border ${isAutoScanning ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-transparent border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'}`}
+                className={`hidden`}
              >
-                {isAutoScanning ? <AlertCircle className="animate-pulse" size={18} /> : <Clock size={18} />}
-                {isAutoScanning ? 'Auto Scan: ON (30s)' : 'Auto Scan: OFF'}
              </button>
 
              <button 
                 onClick={runScan}
                 disabled={isScanning || isAutoScanning}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg flex items-center gap-2 transition-all disabled:opacity-50"
+                className="hidden"
              >
-                {isScanning ? <RefreshCw className="animate-spin" size={18} /> : <Play size={18} />}
-                {isScanning ? 'Scanning...' : 'Run Live Scan (mTrade)'}
              </button>
           </div>
         </header>
@@ -243,7 +247,77 @@ function App() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+         {/* Per-tab Configuration & global controls */}
+         {activeTab !== 'STOP_LOSS' && (
+           <div className="bg-zinc-900/40 p-4 rounded-xl border border-zinc-800 mt-4 mb-8 flex flex-wrap items-center justify-between gap-4">
+             <div className="flex items-center gap-4 flex-wrap">
+               <span className="text-sm font-medium text-emerald-400 mr-2">{activeTab} Scanning Config:</span>
+               {(activeTab === 'FUT' || activeTab === 'OPTIONS' || activeTab === 'MTF' || activeTab === 'INTRADAY') && (
+                 <>
+                   <div className="flex items-center gap-2 border-l border-zinc-700 pl-4">
+                     <label className="text-xs text-zinc-400 whitespace-nowrap">High Dist (cross):</label>
+                     <input 
+                       type="number" step="0.01" min="0.8" max="1.5" 
+                       value={
+                         activeTab === 'FUT' ? futHighDistance :
+                         activeTab === 'OPTIONS' ? optHighDistance :
+                         activeTab === 'MTF' ? mtfHighDistance : intradayHighDistance
+                       } 
+                       onChange={(e) => {
+                         const val = Number(e.target.value);
+                         if (activeTab === 'FUT') setFutHighDistance(val);
+                         else if (activeTab === 'OPTIONS') setOptHighDistance(val);
+                         else if (activeTab === 'MTF') setMtfHighDistance(val);
+                         else setIntradayHighDistance(val);
+                       }}
+                       className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                     />
+                   </div>
+                   <div className="flex items-center gap-2">
+                     <label className="text-xs text-zinc-400 whitespace-nowrap">Volume Factor:</label>
+                     <input 
+                       type="number" step="0.1" min="0.5" max="10.0" 
+                       value={
+                         activeTab === 'FUT' ? futBaseVolMultiplier :
+                         activeTab === 'OPTIONS' ? optBaseVolMultiplier :
+                         activeTab === 'MTF' ? mtfBaseVolMultiplier : intradayBaseVolMultiplier
+                       } 
+                       onChange={(e) => {
+                         const val = Number(e.target.value);
+                         if (activeTab === 'FUT') setFutBaseVolMultiplier(val);
+                         else if (activeTab === 'OPTIONS') setOptBaseVolMultiplier(val);
+                         else if (activeTab === 'MTF') setMtfBaseVolMultiplier(val);
+                         else setIntradayBaseVolMultiplier(val);
+                       }}
+                       className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                     />
+                   </div>
+                 </>
+               )}
+             </div>
+             
+             <div className="flex items-center gap-3 border-t md:border-t-0 md:border-l border-zinc-800 pt-3 md:pt-0 md:pl-4">
+               <button 
+                  onClick={() => setIsAutoScanning(!isAutoScanning)}
+                  className={`px-4 py-1.5 rounded text-sm flex items-center gap-2 transition-all border ${isAutoScanning ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-transparent border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500'}`}
+               >
+                  {isAutoScanning ? <AlertCircle size={14} className="animate-pulse"/> : <Clock size={14} />}
+                  {isAutoScanning ? 'Auto Scan (30s)' : 'Auto Scan: OFF'}
+               </button>
+
+               <button 
+                  onClick={runScan}
+                  disabled={isScanning || isAutoScanning}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-1.5 rounded text-sm flex items-center gap-2 transition-all disabled:opacity-50"
+               >
+                  {isScanning ? <RefreshCw className="animate-spin" size={14} /> : <Play size={14} />}
+                  Live Scan
+               </button>
+             </div>
+           </div>
+         )}
+
+         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Scan Scope Column */}
           <div className="lg:col-span-2 space-y-6">
@@ -396,36 +470,7 @@ function App() {
                        <h2 className="text-lg font-medium">Scan Scope (Radar)</h2>
                     </div>
                     <div className="flex items-center gap-4 flex-wrap justify-end">
-                        {activeTab !== 'STOP_LOSS' && (
-                           <>
-                              {(activeTab === 'FUT' || activeTab === 'OPTIONS') && (
-                                <>
-                                  <div className="flex items-center gap-2">
-                                     <label className="text-xs text-zinc-400">High Dist:</label>
-                                     <input 
-                                       type="number" step="0.01" min="0.8" max="1.0" 
-                                       value={activeTab === 'FUT' ? futHighDistance : optHighDistance} 
-                                       onChange={(e) => activeTab === 'FUT' ? setFutHighDistance(Number(e.target.value)) : setOptHighDistance(Number(e.target.value))}
-                                       className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
-                                     />
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                     <label className="text-xs text-zinc-400">Base Vol Factor:</label>
-                                     <input 
-                                       type="number" step="0.1" min="0.5" max="10.0" 
-                                       value={activeTab === 'FUT' ? futBaseVolMultiplier : optBaseVolMultiplier} 
-                                       onChange={(e) => activeTab === 'FUT' ? setFutBaseVolMultiplier(Number(e.target.value)) : setOptBaseVolMultiplier(Number(e.target.value))}
-                                       className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
-                                     />
-                                  </div>
-                                </>
-                              )}
-                           </>
-                        )}
-                        <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded whitespace-nowrap">
-                           {activeTab === 'MTF' ? 'Criteria: Range <= 30%' : `Criteria: ${Math.round((activeTab === 'FUT' ? futHighDistance : optHighDistance) * 100)}% High OR ${activeTab === 'FUT' ? futBaseVolMultiplier : optBaseVolMultiplier}x Vol`}
-                        </span>
-                     </div>
+                    </div>
                  </div>
                  
                  <div className="overflow-x-auto">

@@ -356,7 +356,7 @@ export class MstockService {
 
     try {
       const orderPayload = {
-        variety: "co",
+        variety: "regular",
         tradingsymbol: symbolInfo.tradingSymbol,
         symboltoken: symbolInfo.token,
         exchange: "NFO",
@@ -365,7 +365,7 @@ export class MstockService {
         quantity: finalQuantity.toString(),
         producttype: "INTRADAY",
         price: (Math.round(entryPrice * 20) / 20).toFixed(2),
-        triggerprice: (Math.round(stopLossPrice * 20) / 20).toFixed(2),            
+        triggerprice: "0",            
         squareoff: "0",               
         stoploss: "0",                
         trailingStopLoss: "",         
