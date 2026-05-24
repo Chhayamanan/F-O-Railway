@@ -518,7 +518,7 @@ export class MstockService {
         timeout: 10000
       });
       console.log("[MSTOCK SERVICE] Response from API:", JSON.stringify(response.data));
-      return response.data;
+      return this.normalizeHoldings(response.data);
     } catch (error: any) {
       console.error("[MSTOCK SERVICE] Error fetching portfolio holdings:", error.response?.data || error.message);
       throw new Error(`Mstock API Error: ${error.response?.data?.message || error.message}`);
