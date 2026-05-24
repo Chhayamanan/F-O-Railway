@@ -10,6 +10,13 @@ interface ScanResult {
   isCeoDesk: boolean;
   contractValue?: number;
   riskValue?: number;
+  type?: 'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY';
+  recommendedOption?: 'CALL' | 'PUT';
+  changePct?: number;
+  volMultiplier?: number;
+  mtfMargin?: number;
+  message?: string;
+  qty?: number;
 }
 
 function App() {
@@ -19,7 +26,7 @@ function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [actionLogs, setActionLogs] = useState<string[]>([]);
   const [isAutoScanning, setIsAutoScanning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'FUT' | 'OPTIONS'>('FUT');
+  const [activeTab, setActiveTab] = useState<'FNO' | 'MTF' | 'INTRADAY'>('FNO');
   
   const fetchStatus = async () => {
     try {
@@ -96,8 +103,14 @@ function App() {
     return () => clearInterval(autoScanInterval);
   }, [isAutoScanning]);
 
-  const filteredCeoDesk = ceoDesk.filter(x => x.type === activeTab || (!x.type && activeTab === 'FUT'));
-  const filteredScanScope = scanScope.filter(x => x.type === activeTab || (!x.type && activeTab === 'FUT'));
+  const filteredCeoDesk = ceoDesk.filter(x => {
+    if (activeTab === 'FNO') return x.type === 'FUT' || x.type === 'OPTIONS' || !x.type;
+    return x.type === activeTab;
+  });
+  const filteredScanScope = scanScope.filter(x => {
+    if (activeTab === 'FNO') return x.type === 'FUT' || x.type === 'OPTIONS' || !x.type;
+    return x.type === activeTab;
+  });
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] text-zinc-100 p-8 font-sans">
@@ -143,16 +156,22 @@ function App() {
 
         <div className="flex gap-4 border-b border-zinc-800 pb-2">
           <button 
-            onClick={() => setActiveTab('FUT')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'FUT' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+            onClick={() => setActiveTab('FNO')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'FNO' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
           >
-            Equity / Futures Scan
+            FNO (Futures & Options)
           </button>
           <button 
-            onClick={() => setActiveTab('OPTIONS')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'OPTIONS' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+            onClick={() => setActiveTab('MTF')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'MTF' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
           >
-            Options Scan
+            MTF
+          </button>
+          <button 
+            onClick={() => setActiveTab('INTRADAY')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'INTRADAY' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            Intraday
           </button>
         </div>
 
@@ -197,8 +216,22 @@ function App() {
                               </div>
                               
                               <div className="col-span-2 mt-2 pt-2 border-t border-emerald-900/30 text-amber-200">
-                                 <div>Estimated Contract Value: <span className="font-mono text-amber-400">₹{item.contractValue?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 'N/A'}</span></div>
-                                 <div>Risk Value (5% SL): <span className="font-mono text-rose-400">₹{item.riskValue?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 'N/A'}</span></div>
+                                 {item.message ? (
+                                   <div className="text-emerald-300 font-mono text-sm">{item.message}</div>
+                                 ) : (
+                                   <>
+                                     {item.contractValue && <div>Estimated Contract Value: <span className="font-mono text-amber-400">₹{item.contractValue?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 'N/A'}</span></div>}
+                                     <div className="flex justify-between items-center pr-4">
+                                       {item.riskValue && <span>Risk Value (5% SL): <span className="font-mono text-rose-400">₹{item.riskValue?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 'N/A'}</span></span>}
+                                       {item.mtfMargin && (
+                                          <span className="text-xs text-indigo-300">MTF Margin: <span className="font-mono text-indigo-400 font-bold">{item.mtfMargin}%</span></span>
+                                       )}
+                                       {item.qty && (
+                                          <span className="text-xs text-indigo-300">Calculated Qty: <span className="font-mono text-emerald-400 font-bold">{item.qty}</span></span>
+                                       )}
+                                     </div>
+                                   </>
+                                 )}
                               </div>
                            </div>
                         </div>
@@ -235,7 +268,7 @@ function App() {
                     <Search className="text-zinc-400" />
                     <h2 className="text-lg font-medium">Scan Scope (Radar)</h2>
                     <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded ml-auto">
-                       Criteria: 0.98% High OR 2x Vol
+                       {activeTab === 'MTF' ? 'Criteria: Range <= 30%' : 'Criteria: 0.98% High OR 2x Vol'}
                     </span>
                  </div>
                  
@@ -264,6 +297,9 @@ function App() {
                                    {item.symbol}
                                    {item.type === 'OPTIONS' && (
                                       <span className="ml-2 bg-indigo-900/50 text-indigo-300 text-[10px] px-1.5 py-0.5 rounded border border-indigo-700/50">OPT</span>
+                                   )}
+                                   {item.mtfMargin && (
+                                      <span className="ml-2 bg-zinc-800 text-zinc-400 text-[10px] px-1.5 py-0.5 rounded border border-zinc-700">MTF {item.mtfMargin}%</span>
                                    )}
                                 </td>
                                 <td className="p-4 font-mono text-zinc-200">

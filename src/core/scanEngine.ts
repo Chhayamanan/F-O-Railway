@@ -1,5 +1,6 @@
 import { DataKeeper } from './dataKeeper';
 import { MstockService } from '../services/mstockService';
+import { MTF_MARGINS } from '../services/marketDataService';
 
 export interface ScanResult {
   symbol: string;
@@ -7,6 +8,7 @@ export interface ScanResult {
   spotPrice?: number;
   latestVolume: number;
   high90d: number;
+  low90d?: number;
   avgVol90d: number;
   isCeoDesk: boolean;
   contractValue?: number;
@@ -14,8 +16,11 @@ export interface ScanResult {
   lotSize?: number;
   changePct?: number;
   volMultiplier?: number;
-  type?: 'FUT' | 'OPTIONS';
+  type?: 'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY';
   recommendedOption?: 'CALL' | 'PUT';
+  mtfMargin?: number;
+  message?: string;
+  qty?: number;
 }
 
 // Store scan results and CEO decisions in memory for now
@@ -23,6 +28,7 @@ export class ScanEngine {
   public static currentScanScope: ScanResult[] = [];
   public static ceoDeskItems: ScanResult[] = [];
   public static cancelledItems: Set<string> = new Set();
+  public static recentMTFBuys: Record<string, number> = {};
   
   // Approximate Lot Sizes for well known stocks (Fallback proxy)
   private static MOCK_LOT_SIZES: Record<string, number> = {
@@ -76,6 +82,7 @@ export class ScanEngine {
          const lotSize = future?.lotSize || this.MOCK_LOT_SIZES[plainSymbol] || 500;
          const contractValue = ltp * lotSize;
          const riskValue = contractValue * 0.05; // 5% stop loss risk
+         const mtfMargin = MTF_MARGINS[plainSymbol];
 
          if (isScanScope) {
             const item: ScanResult = {
@@ -91,7 +98,8 @@ export class ScanEngine {
                lotSize,
                changePct,
                volMultiplier,
-               type: 'FUT'
+               type: 'FUT',
+               mtfMargin
             };
             results.push(item);
             
@@ -112,12 +120,78 @@ export class ScanEngine {
                changePct,
                volMultiplier,
                type: 'OPTIONS',
-               recommendedOption: optionAction
+               recommendedOption: optionAction,
+               mtfMargin
             };
             results.push(optionsItem);
 
             if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'OPTIONS')) {
                newCeoItems.push(optionsItem);
+            }
+         }
+
+         const isMtfEligible = Object.keys(MTF_MARGINS).includes(plainSymbol);
+         if (isMtfEligible && cached.low90d && cached.low90d > 0) {
+            const rangePct = (cached.high90d - cached.low90d) / cached.low90d;
+            if (rangePct <= 0.30) {
+               // In MTF scan scope
+               let mtfItem: ScanResult = {
+                  symbol: plainSymbol,
+                  ltp: spotPrice,
+                  spotPrice,
+                  latestVolume,
+                  high90d: cached.high90d,
+                  low90d: cached.low90d,
+                  avgVol90d: cached.avgVol90d,
+                  isCeoDesk: false,
+                  changePct,
+                  volMultiplier,
+                  type: 'MTF',
+                  mtfMargin
+               };
+
+               const isMtfSignal = spotPrice > cached.high90d && latestVolume >= 3 * cached.avgVol90d;
+               if (isMtfSignal && spotPrice <= 3000) {
+                  mtfItem.isCeoDesk = true;
+
+                  const lastBuyTimestamp = this.recentMTFBuys[plainSymbol];
+                  const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+                  const canBuy = !lastBuyTimestamp || (Date.now() - lastBuyTimestamp) > twoDaysMs;
+
+                  if (canBuy) {
+                     if (mtfMargin && mtfMargin > 0) {
+                        const marginFactor = mtfMargin / 100;
+                        const qty = Math.floor(10000 / (spotPrice * marginFactor));
+
+                        if (qty > 0) {
+                           mtfItem.qty = qty;
+                           try {
+                              // We auto-buy for MTF
+                              await MstockService.placeCoverOrder(plainSymbol, qty, spotPrice * 0.995, spotPrice * 0.95);
+                              console.log(`[MTF BUY] Auto bought ${qty} ${plainSymbol} worth 10000 RS in margin`);
+                              this.recentMTFBuys[plainSymbol] = Date.now();
+                              mtfItem.message = `Auto Bought: ${qty} qty @ ${spotPrice.toFixed(2)}`;
+                           } catch (e: any) {
+                              console.error(`[MTF BUY] Failed for ${plainSymbol}: ${e.message}`);
+                              mtfItem.message = `Auto Buy Failed: ${e.message}`;
+                           }
+                        } else {
+                           mtfItem.message = `Signal valid but calculated qty was 0`;
+                        }
+                     }
+                  } else {
+                     mtfItem.message = `Valid signal but skipped rebuy (within 2 days)`;
+                  }
+               } else if (isMtfSignal && spotPrice > 3000) {
+                  mtfItem.isCeoDesk = true;
+                  mtfItem.message = `Valid signal but price > 3000 (Ignored)`;
+               }
+
+               results.push(mtfItem);
+
+               if (mtfItem.isCeoDesk && !this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'MTF')) {
+                  newCeoItems.push(mtfItem);
+               }
             }
          }
        }

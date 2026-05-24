@@ -23,7 +23,7 @@ async function startServer() {
   app.post("/api/scan/sync-90d", async (req, res) => {
     try {
       // Async background sync
-      DataKeeper.syncLargeCapStocks().catch(console.error);
+      DataKeeper.syncAllStocks().catch(console.error);
       res.json({ success: true, message: "Started 90-day data sync in background." });
     } catch (e: any) {
       res.status(500).json({ success: false, error: String(e) });

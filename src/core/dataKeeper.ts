@@ -1,12 +1,13 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { YahooService } from '../services/yahooService';
-import { LARGE_CAP_STOCKS } from '../services/marketDataService';
+import { RAW_UNIVERSE } from '../services/marketDataService';
 
 const CACHE_FILE = path.join(process.cwd(), 'market_cache.json');
 
 export interface CachedStockData {
   high90d: number;
+  low90d: number;
   avgVol90d: number;
   lastUpdated: number;
 }
@@ -34,15 +35,15 @@ export class DataKeeper {
     return this.cache;
   }
 
-  static async syncLargeCapStocks() {
+  static async syncAllStocks() {
     if (!this.cache) await this.init();
 
     // 1. Transform clean names into explicit Yahoo Tickers (appending .NS)
-    const targetSymbols = LARGE_CAP_STOCKS.map(symbol => 
-      symbol.endsWith('.NS') ? symbol : `${symbol}.NS`
+    const targetSymbols = RAW_UNIVERSE.map(symbol => 
+      symbol.endsWith('.NS') || symbol.startsWith('^') || symbol.endsWith('.BO') ? symbol : `${symbol}.NS`
     );
 
-    console.log(`[DATA KEEPER] Strictly syncing ${targetSymbols.length} Large Cap stocks...`);
+    console.log(`[DATA KEEPER] Strictly syncing ${targetSymbols.length} stocks from universe...`);
     
     // Keeping a safe chunk size to avoid Yahoo's aggressive blocks
     const CHUNK_SIZE = 4; 
@@ -56,11 +57,13 @@ export class DataKeeper {
           
           if (data && data.length > 0) {
             let maxHigh = 0;
+            let minLow = Infinity;
             let totalVol = 0;
             let validDays = 0;
             
             for (const day of data) {
               if (day.high) maxHigh = Math.max(maxHigh, day.high);
+              if (day.low) minLow = Math.min(minLow, day.low);
               if (day.volume) {
                 totalVol += day.volume;
                 validDays++;
@@ -69,6 +72,7 @@ export class DataKeeper {
             
             this.cache![symbol] = {
               high90d: maxHigh,
+              low90d: minLow === Infinity ? 0 : minLow,
               avgVol90d: validDays > 0 ? totalVol / validDays : 0,
               lastUpdated: Date.now()
             };
@@ -88,7 +92,7 @@ export class DataKeeper {
     }
     
     await this.saveCache();
-    console.log('[DATA KEEPER] Focused Large Cap Sync Complete.');
+    console.log('[DATA KEEPER] Full Universe Sync Complete.');
   }
 
   static getStockData(symbol: string): CachedStockData | null {
