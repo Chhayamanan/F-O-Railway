@@ -529,11 +529,14 @@ export class MstockService {
 
       const result: any = await response.json();
 
-      if (result.status === "true" && result.data) {
-        console.log(`[MSTOCK SERVICE] Successfully retrieved ${result.data.length} portfolio items.`);
-        return this.normalizeHoldings(result.data);
+      const isSuccessful = result.status === "true" || result.status === true || String(result.status).toLowerCase() === "success";
+
+      if (isSuccessful) {
+        const holdingsList = result.data || [];
+        console.log(`[MSTOCK SERVICE] Connection clear. Retrieved ${holdingsList.length} long-term holding items.`);
+        return this.normalizeHoldings(holdingsList);
       } else {
-        console.error(`[MSTOCK SERVICE] Portfolio fetch failed message: ${result.message} (Code: ${result.errorcode})`);
+        console.error(`[MSTOCK SERVICE] Portfolio fetch rejected: ${result.message} (Code: ${result.errorcode})`);
         return null;
       }
     } catch (error: any) {
