@@ -18,6 +18,7 @@ function App() {
   const [syncedCount, setSyncedCount] = useState(0);
   const [isScanning, setIsScanning] = useState(false);
   const [actionLogs, setActionLogs] = useState<string[]>([]);
+  const [isAutoScanning, setIsAutoScanning] = useState(false);
   const [activeTab, setActiveTab] = useState<'FUT' | 'OPTIONS'>('FUT');
   
   const fetchStatus = async () => {
@@ -84,6 +85,17 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    let autoScanInterval: NodeJS.Timeout;
+    if (isAutoScanning) {
+      runScan();
+      autoScanInterval = setInterval(() => {
+        runScan();
+      }, 30000);
+    }
+    return () => clearInterval(autoScanInterval);
+  }, [isAutoScanning]);
+
   const filteredCeoDesk = ceoDesk.filter(x => x.type === activeTab || (!x.type && activeTab === 'FUT'));
   const filteredScanScope = scanScope.filter(x => x.type === activeTab || (!x.type && activeTab === 'FUT'));
 
@@ -111,8 +123,16 @@ function App() {
              </div>
              
              <button 
+                onClick={() => setIsAutoScanning(!isAutoScanning)}
+                className={`px-6 py-2 rounded-lg flex items-center gap-2 transition-all border ${isAutoScanning ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-transparent border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'}`}
+             >
+                {isAutoScanning ? <AlertCircle className="animate-pulse" size={18} /> : <Clock size={18} />}
+                {isAutoScanning ? 'Auto Scan: ON (30s)' : 'Auto Scan: OFF'}
+             </button>
+
+             <button 
                 onClick={runScan}
-                disabled={isScanning}
+                disabled={isScanning || isAutoScanning}
                 className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg flex items-center gap-2 transition-all disabled:opacity-50"
              >
                 {isScanning ? <RefreshCw className="animate-spin" size={18} /> : <Play size={18} />}
