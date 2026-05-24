@@ -1,5 +1,6 @@
 import axios from 'axios';
 import * as OTPAuth from 'otpauth';
+import { FNO_STOCKS, MTF_MARGINS } from './marketDataService';
 
 export class MstockService {
   private static cachedToken: string | null = null;
@@ -620,7 +621,6 @@ export class MstockService {
 
       let type = 'CASH';
       const cleanSymbol = symbol.replace('.NS', '').replace('.BO', '');
-      const { FNO_STOCKS, MTF_MARGINS } = require('./marketDataService');
       if (FNO_STOCKS.includes(cleanSymbol)) {
          type = 'FNO';
       } else if (MTF_MARGINS[cleanSymbol]) {
