@@ -1,6 +1,6 @@
 import { DataKeeper } from './dataKeeper';
 import { MstockService } from '../services/mstockService';
-import { MTF_MARGINS } from '../services/marketDataService';
+import { MTF_MARGINS, FNO_STOCKS } from '../services/marketDataService';
 
 export interface ScanResult {
   symbol: string;
@@ -75,7 +75,7 @@ export class ScanEngine {
          const isCrossHigh = spotPrice > cached.high90d;
          
          // Options Criteria: configurable volume factor (default 1.5x)
-         const isOptionsEligible = volMultiplier >= minVolMultiplier;
+         const isOptionsEligible = FNO_STOCKS.includes(plainSymbol) && volMultiplier >= minVolMultiplier;
          // Compare current LTP with Yesterday's close
          const optionAction = ltp > futPrevClose ? 'CALL' : 'PUT';
 
