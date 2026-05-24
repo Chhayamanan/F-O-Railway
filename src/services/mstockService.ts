@@ -85,7 +85,7 @@ export class MstockService {
       return this.cachedToken;
     }
     this.cachedToken = null;
-    this.scripMasterData = null;
+    this.scripMasterDataMap = null;
     console.log("[MSTOCK SERVICE] Token missing or expired, re-authenticating...");
     try {
         return await this.autoLoginWithTOTP();

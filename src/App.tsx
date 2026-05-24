@@ -245,9 +245,9 @@ function App() {
                      </button>
                   </div>
                   <div className="p-4 space-y-4">
-                    {portfolio.filter(p => p.type === 'MTF' || p.type === 'FNO').length === 0 ? (
-                      <div className="text-zinc-500 text-center py-8">No margin traded or future stocks found in portfolio.</div>
-                    ) : portfolio.filter(p => p.type === 'MTF' || p.type === 'FNO').map((item, idx) => (
+                    {portfolio.length === 0 ? (
+                      <div className="text-zinc-500 text-center py-8">No stocks found in portfolio.</div>
+                    ) : portfolio.map((item, idx) => (
                       <div key={idx} className="bg-black/40 border border-rose-900/30 p-5 rounded-lg flex flex-col md:flex-row justify-between gap-4">
                          <div className="space-y-2 flex-grow">
                             <div className="flex items-baseline gap-3">

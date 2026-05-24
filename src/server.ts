@@ -13,7 +13,7 @@ import { ScanEngine } from "./core/scanEngine";
 async function startServer() {
   const app = express();
   
-  const PORT = process.env.PORT || 3000;
+  const PORT = 3000;
   app.use(express.json());
 
   // Init Data Keeper
@@ -98,7 +98,7 @@ async function startServer() {
       if (!symbol || !quantity || !stopLossPrice) {
         return res.status(400).json({ success: false, error: "Missing required fields for stop loss." });
       }
-      const productType = type === 'FNO' ? 'INTRADAY' : 'MTF';
+      const productType = type === 'FNO' ? 'INTRADAY' : (type === 'MTF' ? 'MTF' : 'DELIVERY');
       const orderId = await MstockService.placeStopLossOrder(symbol, quantity, stopLossPrice, productType, symbolToken, tradingSymbol);
       res.json({ success: true, orderId, message: `Placed SL for ${symbol} at ₹${stopLossPrice}` });
     } catch (e: any) {
