@@ -26,10 +26,11 @@ function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [actionLogs, setActionLogs] = useState<string[]>([]);
   const [isAutoScanning, setIsAutoScanning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'FNO' | 'MTF' | 'INTRADAY' | 'STOP_LOSS'>('FNO');
-  const [volMultiplier, setVolMultiplier] = useState<number>(1.5);
-  const [baseVolMultiplier, setBaseVolMultiplier] = useState<number>(2.0);
-  const [highDistance, setHighDistance] = useState<number>(0.98);
+  const [activeTab, setActiveTab] = useState<'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY' | 'STOP_LOSS'>('FUT');
+  const [futHighDistance, setFutHighDistance] = useState<number>(0.98);
+  const [futBaseVolMultiplier, setFutBaseVolMultiplier] = useState<number>(2.0);
+  const [optHighDistance, setOptHighDistance] = useState<number>(0.98);
+  const [optBaseVolMultiplier, setOptBaseVolMultiplier] = useState<number>(2.0);
   const [portfolio, setPortfolio] = useState<any[]>([]);
   
   const fetchStatus = async () => {
@@ -72,9 +73,10 @@ function App() {
     }
     try {
       const queryParams = new URLSearchParams({
-        volMultiplier: volMultiplier.toString(),
-        baseVolMultiplier: baseVolMultiplier.toString(),
-        highDistance: highDistance.toString()
+        futHighDist: futHighDistance.toString(),
+        futVolMult: futBaseVolMultiplier.toString(),
+        optHighDist: optHighDistance.toString(),
+        optVolMult: optBaseVolMultiplier.toString()
       });
       const res = await fetch(`/api/scan/results?${queryParams.toString()}`);
       const data = await res.json();
@@ -160,12 +162,10 @@ function App() {
   }, [activeTab]);
 
   const filteredCeoDesk = ceoDesk.filter(x => {
-    if (activeTab === 'FNO') return x.type === 'FUT' || x.type === 'OPTIONS' || !x.type;
-    return x.type === activeTab;
+    return x.type === activeTab || (!x.type && activeTab === 'FUT');
   });
   const filteredScanScope = scanScope.filter(x => {
-    if (activeTab === 'FNO') return x.type === 'FUT' || x.type === 'OPTIONS' || !x.type;
-    return x.type === activeTab;
+    return x.type === activeTab || (!x.type && activeTab === 'FUT');
   });
 
   return (
@@ -212,10 +212,16 @@ function App() {
 
         <div className="flex gap-4 border-b border-zinc-800 pb-2">
           <button 
-            onClick={() => setActiveTab('FNO')}
-            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'FNO' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+            onClick={() => setActiveTab('FUT')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'FUT' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
           >
-            FNO (Futures & Options)
+            Futures
+          </button>
+          <button 
+            onClick={() => setActiveTab('OPTIONS')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'OPTIONS' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            Options
           </button>
           <button 
             onClick={() => setActiveTab('MTF')}
@@ -392,27 +398,32 @@ function App() {
                     <div className="flex items-center gap-4 flex-wrap justify-end">
                         {activeTab !== 'STOP_LOSS' && (
                            <>
-                              {/* Options Vol Factor removed per request, now using single scan factors */}
-                              <div className="flex items-center gap-2">
-                                 <label className="text-xs text-zinc-400">High Dist:</label>
-                                 <input 
-                                   type="number" step="0.01" min="0.8" max="1.0" 
-                                   value={highDistance} onChange={(e) => setHighDistance(Number(e.target.value))}
-                                   className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
-                                 />
-                              </div>
-                              <div className="flex items-center gap-2">
-                                 <label className="text-xs text-zinc-400">Base Vol Factor:</label>
-                                 <input 
-                                   type="number" step="0.1" min="0.5" max="10.0" 
-                                   value={baseVolMultiplier} onChange={(e) => setBaseVolMultiplier(Number(e.target.value))}
-                                   className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
-                                 />
-                              </div>
+                              {(activeTab === 'FUT' || activeTab === 'OPTIONS') && (
+                                <>
+                                  <div className="flex items-center gap-2">
+                                     <label className="text-xs text-zinc-400">High Dist:</label>
+                                     <input 
+                                       type="number" step="0.01" min="0.8" max="1.0" 
+                                       value={activeTab === 'FUT' ? futHighDistance : optHighDistance} 
+                                       onChange={(e) => activeTab === 'FUT' ? setFutHighDistance(Number(e.target.value)) : setOptHighDistance(Number(e.target.value))}
+                                       className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                                     />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                     <label className="text-xs text-zinc-400">Base Vol Factor:</label>
+                                     <input 
+                                       type="number" step="0.1" min="0.5" max="10.0" 
+                                       value={activeTab === 'FUT' ? futBaseVolMultiplier : optBaseVolMultiplier} 
+                                       onChange={(e) => activeTab === 'FUT' ? setFutBaseVolMultiplier(Number(e.target.value)) : setOptBaseVolMultiplier(Number(e.target.value))}
+                                       className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                                     />
+                                  </div>
+                                </>
+                              )}
                            </>
                         )}
                         <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded whitespace-nowrap">
-                           {activeTab === 'MTF' ? 'Criteria: Range <= 30%' : `Criteria: ${Math.round(highDistance * 100)}% High OR ${baseVolMultiplier}x Vol`}
+                           {activeTab === 'MTF' ? 'Criteria: Range <= 30%' : `Criteria: ${Math.round((activeTab === 'FUT' ? futHighDistance : optHighDistance) * 100)}% High OR ${activeTab === 'FUT' ? futBaseVolMultiplier : optBaseVolMultiplier}x Vol`}
                         </span>
                      </div>
                  </div>

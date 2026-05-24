@@ -35,10 +35,16 @@ export class ScanEngine {
     "RIL": 250, "RELIANCE": 250, "HDFCBANK": 550, "INFY": 400, "TCS": 175, "ICICIBANK": 700, "SBI": 1500, "SBIN": 1500
   };
 
-  static async runScan(universe: string[], config: { volMultiplier?: number, highDistance?: number, baseVolMultiplier?: number } = {}) {
-    const minVolMultiplier = config.volMultiplier || 1.5;
-    const minHighDistance = config.highDistance || 0.98;
-    const minBaseVolMultiplier = config.baseVolMultiplier || 2.0;
+  static async runScan(universe: string[], config: { 
+    futHighDistance?: number, 
+    futBaseVolMultiplier?: number,
+    optHighDistance?: number,
+    optBaseVolMultiplier?: number
+  } = {}) {
+    const futHighDist = config.futHighDistance || 0.98;
+    const futVolMult = config.futBaseVolMultiplier || 2.0;
+    const optHighDist = config.optHighDistance || 0.98;
+    const optVolMult = config.optBaseVolMultiplier || 2.0;
     const results: ScanResult[] = [];
     const newCeoItems: ScanResult[] = [];
     
@@ -74,9 +80,11 @@ export class ScanEngine {
          
          const isCrossHigh = spotPrice > cached.high90d;
          
-         // Same criteria for both Futures and Options
-         const isScanScope = (spotPrice >= minHighDistance * cached.high90d) || (volMultiplier >= minBaseVolMultiplier) || isCrossHigh;
-         const isOptionsEligible = FNO_STOCKS.includes(plainSymbol) && isScanScope;
+         // Separate criteria for Futures and Options
+         const isFutScanScope = (spotPrice >= futHighDist * cached.high90d) || (volMultiplier >= futVolMult) || isCrossHigh;
+         const isOptScanScope = (spotPrice >= optHighDist * cached.high90d) || (volMultiplier >= optVolMult) || isCrossHigh;
+         
+         const isOptionsEligible = FNO_STOCKS.includes(plainSymbol) && isOptScanScope;
          // Compare current LTP with Yesterday's close
          const optionAction = ltp > futPrevClose ? 'CALL' : 'PUT';
          
@@ -85,7 +93,7 @@ export class ScanEngine {
          const riskValue = contractValue * 0.05; // 5% stop loss risk
          const mtfMargin = MTF_MARGINS[plainSymbol];
 
-         if (isScanScope) {
+         if (isFutScanScope) {
             const item: ScanResult = {
                symbol: plainSymbol,
                ltp,
