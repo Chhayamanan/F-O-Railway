@@ -32,7 +32,10 @@ async function startServer() {
 
   app.get("/api/scan/results", async (req, res) => {
     try {
-      const results = await ScanEngine.runScan(RAW_UNIVERSE);
+      const volMultiplier = req.query.volMultiplier ? parseFloat(req.query.volMultiplier as string) : 1.5;
+      const highDistance = req.query.highDistance ? parseFloat(req.query.highDistance as string) : 0.98;
+      const baseVolMultiplier = req.query.baseVolMultiplier ? parseFloat(req.query.baseVolMultiplier as string) : 2.0;
+      const results = await ScanEngine.runScan(RAW_UNIVERSE, { volMultiplier, highDistance, baseVolMultiplier });
       res.json({ success: true, data: results });
     } catch (e: any) {
       res.status(500).json({ success: false, error: String(e) });

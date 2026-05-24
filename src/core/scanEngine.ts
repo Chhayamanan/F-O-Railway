@@ -35,7 +35,10 @@ export class ScanEngine {
     "RIL": 250, "RELIANCE": 250, "HDFCBANK": 550, "INFY": 400, "TCS": 175, "ICICIBANK": 700, "SBI": 1500, "SBIN": 1500
   };
 
-  static async runScan(universe: string[]) {
+  static async runScan(universe: string[], config: { volMultiplier?: number, highDistance?: number, baseVolMultiplier?: number } = {}) {
+    const minVolMultiplier = config.volMultiplier || 1.5;
+    const minHighDistance = config.highDistance || 0.98;
+    const minBaseVolMultiplier = config.baseVolMultiplier || 2.0;
     const results: ScanResult[] = [];
     const newCeoItems: ScanResult[] = [];
     
@@ -71,13 +74,13 @@ export class ScanEngine {
          
          const isCrossHigh = spotPrice > cached.high90d;
          
-         // Options Criteria: volume higher by 0.5x means (average + 0.5 * average) = 1.5x
-         const isOptionsEligible = volMultiplier >= 1.5;
+         // Options Criteria: configurable volume factor (default 1.5x)
+         const isOptionsEligible = volMultiplier >= minVolMultiplier;
          // Compare current LTP with Yesterday's close
          const optionAction = ltp > futPrevClose ? 'CALL' : 'PUT';
 
          // Original criteria
-         const isScanScope = (spotPrice >= 0.98 * cached.high90d) || (latestVolume >= 2 * cached.avgVol90d) || isCrossHigh;
+         const isScanScope = (spotPrice >= minHighDistance * cached.high90d) || (volMultiplier >= minBaseVolMultiplier) || isCrossHigh;
          
          const lotSize = future?.lotSize || this.MOCK_LOT_SIZES[plainSymbol] || 500;
          const contractValue = ltp * lotSize;

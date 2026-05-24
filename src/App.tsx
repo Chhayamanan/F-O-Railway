@@ -27,6 +27,9 @@ function App() {
   const [actionLogs, setActionLogs] = useState<string[]>([]);
   const [isAutoScanning, setIsAutoScanning] = useState(false);
   const [activeTab, setActiveTab] = useState<'FNO' | 'MTF' | 'INTRADAY' | 'STOP_LOSS'>('FNO');
+  const [volMultiplier, setVolMultiplier] = useState<number>(1.5);
+  const [baseVolMultiplier, setBaseVolMultiplier] = useState<number>(2.0);
+  const [highDistance, setHighDistance] = useState<number>(0.98);
   const [portfolio, setPortfolio] = useState<any[]>([]);
   
   const fetchStatus = async () => {
@@ -68,7 +71,12 @@ function App() {
        return;
     }
     try {
-      const res = await fetch('/api/scan/results');
+      const queryParams = new URLSearchParams({
+        volMultiplier: volMultiplier.toString(),
+        baseVolMultiplier: baseVolMultiplier.toString(),
+        highDistance: highDistance.toString()
+      });
+      const res = await fetch(`/api/scan/results?${queryParams.toString()}`);
       const data = await res.json();
       if (data.success) {
         setScanScope(data.data.scanScope || []);
@@ -371,12 +379,46 @@ function App() {
 
              {/* Standard Scan Scope */}
              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-xl overflow-hidden">
-                 <div className="p-4 border-b border-zinc-800 flex items-center gap-3">
-                    <Search className="text-zinc-400" />
-                    <h2 className="text-lg font-medium">Scan Scope (Radar)</h2>
-                    <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded ml-auto">
-                       {activeTab === 'MTF' ? 'Criteria: Range <= 30%' : 'Criteria: 0.98% High OR 2x Vol'}
-                    </span>
+                 <div className="p-4 border-b border-zinc-800 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                    <div className="flex items-center gap-3">
+                       <Search className="text-zinc-400" />
+                       <h2 className="text-lg font-medium">Scan Scope (Radar)</h2>
+                    </div>
+                    <div className="flex items-center gap-4 flex-wrap justify-end">
+                        {activeTab !== 'STOP_LOSS' && (
+                           <>
+                              {activeTab === 'FNO' && (
+                                <div className="flex items-center gap-2">
+                                   <label className="text-xs text-zinc-400">Options Vol Factor:</label>
+                                   <input 
+                                     type="number" step="0.1" min="0.5" max="10.0" 
+                                     value={volMultiplier} onChange={(e) => setVolMultiplier(Number(e.target.value))}
+                                     className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                                   />
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2">
+                                 <label className="text-xs text-zinc-400">High Dist:</label>
+                                 <input 
+                                   type="number" step="0.01" min="0.8" max="1.0" 
+                                   value={highDistance} onChange={(e) => setHighDistance(Number(e.target.value))}
+                                   className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                                 />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                 <label className="text-xs text-zinc-400">Base Vol Factor:</label>
+                                 <input 
+                                   type="number" step="0.1" min="0.5" max="10.0" 
+                                   value={baseVolMultiplier} onChange={(e) => setBaseVolMultiplier(Number(e.target.value))}
+                                   className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                                 />
+                              </div>
+                           </>
+                        )}
+                        <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded whitespace-nowrap">
+                           {activeTab === 'MTF' ? 'Criteria: Range <= 30%' : `Criteria: ${Math.round(highDistance * 100)}% High OR ${baseVolMultiplier}x Vol`}
+                        </span>
+                     </div>
                  </div>
                  
                  <div className="overflow-x-auto">
