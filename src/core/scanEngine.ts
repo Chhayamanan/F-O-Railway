@@ -57,14 +57,18 @@ export class ScanEngine {
          const ltp = future && future.price > 0 ? future.price : live.price;
          const spotPrice = live.price;
          const latestVolume = live.volume;
-         const changePct = live.prevClose > 0 ? ((spotPrice - live.prevClose) / live.prevClose) * 100 : 0;
+         const futPrevClose = future && future.prevClose > 0 ? future.prevClose : live.prevClose;
+         
+         // Calculate change based on LTP vs Yesterday's close
+         const changePct = futPrevClose > 0 ? ((ltp - futPrevClose) / futPrevClose) * 100 : 0;
          const volMultiplier = cached.avgVol90d > 0 ? (latestVolume / cached.avgVol90d) : 0;
          
          const isCrossHigh = spotPrice > cached.high90d;
          
-         // Options Criteria
+         // Options Criteria: volume higher by 0.5x means (average + 0.5 * average) = 1.5x
          const isOptionsEligible = volMultiplier >= 1.5;
-         const optionAction = spotPrice > live.prevClose ? 'CALL' : 'PUT';
+         // Compare current LTP with Yesterday's close
+         const optionAction = ltp > futPrevClose ? 'CALL' : 'PUT';
 
          // Original criteria
          const isScanScope = (spotPrice >= 0.98 * cached.high90d) || (latestVolume >= 2 * cached.avgVol90d) || isCrossHigh;
