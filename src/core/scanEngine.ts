@@ -74,13 +74,11 @@ export class ScanEngine {
          
          const isCrossHigh = spotPrice > cached.high90d;
          
-         // Options Criteria: configurable volume factor (default 1.5x)
-         const isOptionsEligible = FNO_STOCKS.includes(plainSymbol) && volMultiplier >= minVolMultiplier;
+         // Same criteria for both Futures and Options
+         const isScanScope = (spotPrice >= minHighDistance * cached.high90d) || (volMultiplier >= minBaseVolMultiplier) || isCrossHigh;
+         const isOptionsEligible = FNO_STOCKS.includes(plainSymbol) && isScanScope;
          // Compare current LTP with Yesterday's close
          const optionAction = ltp > futPrevClose ? 'CALL' : 'PUT';
-
-         // Original criteria
-         const isScanScope = (spotPrice >= minHighDistance * cached.high90d) || (volMultiplier >= minBaseVolMultiplier) || isCrossHigh;
          
          const lotSize = future?.lotSize || this.MOCK_LOT_SIZES[plainSymbol] || 500;
          const contractValue = ltp * lotSize;
@@ -212,26 +210,27 @@ export class ScanEngine {
   }
 
   
-  static async actionCeoItem(symbol: string, action: 'BUY' | 'HOLD' | 'CANCEL', type: 'FUT' | 'OPTIONS' = 'FUT') {
+  static async actionCeoItem(symbol: string, action: 'BUY' | 'HOLD' | 'CANCEL', type: 'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY' = 'FUT') {
       const index = this.ceoDeskItems.findIndex(x => x.symbol === symbol && (x.type === type || (!x.type && type === 'FUT')));
       if (index === -1) return { success: false, message: "Item not in CEO Desk" };
       
       const item = this.ceoDeskItems[index];
 
+      // helper to clear out all related entries for the same symbol
+      const clearSymbolFromDesk = (sym: string) => {
+          this.ceoDeskItems = this.ceoDeskItems.filter(x => x.symbol !== sym);
+      };
+
       if (action === 'BUY') {
          if (type === 'OPTIONS') {
-             // Let's just hold for options or implement optional buy logic if they have the API
-             // For now, we return success with dummy or standard message
-             this.ceoDeskItems.splice(index, 1);
+             clearSymbolFromDesk(symbol);
              return { success: true, message: `Placed Buy Order for ${item.recommendedOption} Option on ${symbol} (Simulated for Options)` };
          } else {
              const orderPrice = item.ltp * 0.995;
              const slPrice = item.ltp * 0.95;
              try {
-                 // Buy 1 lot (this implies FNO, but we use the lotSize equity equivalent as proxy due to API instrument limits)
                  await MstockService.placeCoverOrder(symbol, item.lotSize || 1, orderPrice, slPrice);
-
-                 this.ceoDeskItems.splice(index, 1);
+                 clearSymbolFromDesk(symbol);
                  return { success: true, message: `Placed Cover Order for ${symbol} @ RS ${orderPrice.toFixed(2)} and SL @ RS ${slPrice.toFixed(2)}` };
              } catch (e: any) {
                  console.error(`[CEO DESK] Cover Order failed for ${symbol}: ${e.message}`);
@@ -239,16 +238,14 @@ export class ScanEngine {
              }
          }
       } else if (action === 'HOLD') {
-         // Keep in the list
          return { success: true, message: `Holding ${symbol} (${type}). Item remains open.` };
       } else if (action === 'CANCEL') {
-         // Remove from scan scope for the entire day if both are cancelled or something, but let's just mark the specific type
-         if (type === 'FUT') this.cancelledItems.add(symbol); 
-         this.ceoDeskItems.splice(index, 1);
-         if (type === 'FUT') {
-             this.currentScanScope = this.currentScanScope.filter(x => x.symbol !== symbol || x.type !== 'FUT');
-         }
-         return { success: true, message: `Cancelled ${symbol} (${type}) for the day.` };
+         this.cancelledItems.add(symbol); 
+         clearSymbolFromDesk(symbol);
+         
+         this.currentScanScope = this.currentScanScope.filter(x => x.symbol !== symbol);
+         
+         return { success: true, message: `Cancelled ${symbol} for the day.` };
       }
       return { success: false, message: "Invalid action" };
   }

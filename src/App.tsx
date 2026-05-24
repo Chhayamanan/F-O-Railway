@@ -310,6 +310,11 @@ function App() {
                              <span className="text-emerald-400 font-mono flex items-center gap-1">
                                <TrendingUp size={14} /> ₹{item.ltp.toFixed(2)}
                              </span>
+                             {item.spotPrice !== undefined && item.spotPrice !== item.ltp && (
+                               <span className="text-xs text-zinc-400 font-mono self-center">
+                                 (Spot: ₹{item.spotPrice.toFixed(2)})
+                               </span>
+                             )}
                              {item.changePct !== undefined && (
                                <span className={`text-sm font-mono ${item.changePct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                  {item.changePct >= 0 ? '+' : ''}{item.changePct.toFixed(2)}%
@@ -356,7 +361,7 @@ function App() {
                              onClick={() => handleCeoAction(item.symbol, 'BUY', item.type || 'FUT')}
                              className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded font-medium flex items-center justify-center gap-2 transition-colors border border-emerald-500/50"
                            >
-                             <CheckCircle size={16} /> Execute Buy
+                             <CheckCircle size={16} /> {item.type === 'OPTIONS' ? `Execute ${item.recommendedOption || 'Option'}` : 'Execute Buy'}
                            </button>
                            <button 
                              onClick={() => handleCeoAction(item.symbol, 'HOLD', item.type || 'FUT')}
@@ -387,16 +392,7 @@ function App() {
                     <div className="flex items-center gap-4 flex-wrap justify-end">
                         {activeTab !== 'STOP_LOSS' && (
                            <>
-                              {activeTab === 'FNO' && (
-                                <div className="flex items-center gap-2">
-                                   <label className="text-xs text-zinc-400">Options Vol Factor:</label>
-                                   <input 
-                                     type="number" step="0.1" min="0.5" max="10.0" 
-                                     value={volMultiplier} onChange={(e) => setVolMultiplier(Number(e.target.value))}
-                                     className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
-                                   />
-                                </div>
-                              )}
+                              {/* Options Vol Factor removed per request, now using single scan factors */}
                               <div className="flex items-center gap-2">
                                  <label className="text-xs text-zinc-400">High Dist:</label>
                                  <input 
