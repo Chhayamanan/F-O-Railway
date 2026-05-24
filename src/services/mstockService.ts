@@ -402,6 +402,93 @@ export class MstockService {
     }
   }
 
+  static async placeBracketOrder(symbol: string, quantity: number = 1, entryPrice: number, stopLossPrice: number, targetPrice: number) {
+    const apiKey = process.env.MSTOCK_API_KEY;
+    
+    let sessionToken = null;
+    try {
+        sessionToken = await this.getMstockJwtToken();
+    } catch (e: any) {
+        throw new Error("Mstock Auth Failed: " + e.message);
+    }
+    
+    if (!apiKey || !sessionToken) {
+      throw new Error("Mstock Auth Failed. Missing API Key or session is not active. Cannot trade.");
+    }
+    
+    const symbolInfo = await this.getFutureSymbolToken(symbol, apiKey!, sessionToken);
+    if (!symbolInfo) {
+       throw new Error(`Future symbol token not found for ${symbol}. Market lot and symbol cannot be resolved.`);
+    }
+
+    const orderUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
+
+    const orderHeaders = {
+      'X-Mirae-Version': '1',
+      'X-PrivateKey': apiKey,
+      'Authorization': `Bearer ${sessionToken}`,
+      'Content-Type': 'application/json'
+    };
+
+    let finalQuantity = quantity;
+    if (quantity < symbolInfo.lotSize) {
+        finalQuantity = symbolInfo.lotSize;
+    } else {
+        finalQuantity = Math.floor(quantity / symbolInfo.lotSize) * symbolInfo.lotSize;
+    }
+
+    // Usually BO uses absolute diffs for target/sl points
+    const stopLossDiff = Math.abs(entryPrice - stopLossPrice);
+    const targetDiff = Math.abs(targetPrice - entryPrice);
+
+    try {
+      const orderPayload = {
+        variety: "bo",
+        tradingsymbol: symbolInfo.tradingSymbol,
+        symboltoken: symbolInfo.token,
+        exchange: "NFO",
+        transactiontype: "BUY",       
+        ordertype: "LIMIT",
+        quantity: finalQuantity.toString(),
+        producttype: "INTRADAY",
+        price: (Math.round(entryPrice * 20) / 20).toFixed(2),
+        triggerprice: "0",            
+        squareoff: (Math.round(targetDiff * 20) / 20).toFixed(2),               
+        stoploss: (Math.round(stopLossDiff * 20) / 20).toFixed(2),                
+        trailingStopLoss: "",         
+        disclosedquantity: "0",        
+        duration: "DAY",              
+        ordertag: ""                  
+      };
+
+      console.log(`[BROKER] Placing Bracket Order — full payload: ${JSON.stringify(orderPayload)}`);
+
+      const response = await axios({
+        method: 'POST',
+        url: orderUrl,
+        headers: orderHeaders,
+        data: orderPayload
+      });
+
+      console.log("[SUCCESS] Broker Accepted Request:", response.data);
+      if (response.data?.status === 'true' || response.data?.status === true || response.data?.status === 'success') {
+        return response.data?.data?.orderid;
+      } else {
+        throw new Error(response.data?.message || "Order rejected by broker");
+      }
+    } catch (error: any) {
+      console.error(`[ERROR] Bracket Order placement failed for ${symbolInfo.tradingSymbol}:`);
+      if (error.response) {
+        console.error(`Status Code: ${error.response.status}`);
+        console.error("Server Message:", error.response.data);
+        throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing order on Mstock"}`);
+      } else {
+        console.error("Network Error:", error.message);
+        throw new Error(`ERROR: ${error.message || "Unknown error placing order on Mstock"}`);
+      }
+    }
+  }
+
   static async placeStopLossOrder(symbol: string, quantity: number, stopLossPrice: number, productType: string = "MTF", providedSymbolToken?: string, providedTradingSymbol?: string) {
     const apiKey = process.env.MSTOCK_API_KEY;
     

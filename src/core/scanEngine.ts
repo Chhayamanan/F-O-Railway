@@ -231,14 +231,21 @@ export class ScanEngine {
 
       if (action === 'BUY') {
          const orderPrice = item.ltp * 0.995;
-         const slPrice = item.ltp * 0.95;
+         
          try {
-             await MstockService.placeCoverOrder(symbol, item.lotSize || 1, orderPrice, slPrice);
-             clearSymbolFromDesk(symbol);
-             
              if (type === 'OPTIONS') {
-                 return { success: true, message: `Placed Cover Order for ${item.recommendedOption} Option on ${symbol} @ RS ${orderPrice.toFixed(2)} and SL @ RS ${slPrice.toFixed(2)}` };
+                 // Stop loss at 20% (price drops 20%) -> 0.8 * price
+                 const slPrice = item.ltp * 0.80;
+                 // Target at 40% (price jumps 40%) -> 1.4 * price
+                 const targetPrice = item.ltp * 1.40;
+                 
+                 await MstockService.placeBracketOrder(symbol, item.lotSize || 1, orderPrice, slPrice, targetPrice);
+                 clearSymbolFromDesk(symbol);
+                 return { success: true, message: `Placed Bracket Order for ${item.recommendedOption} Option on ${symbol} @ RS ${orderPrice.toFixed(2)}, SL (-20%) @ RS ${slPrice.toFixed(2)}, TGT (+40%) @ RS ${targetPrice.toFixed(2)}` };
              } else {
+                 const slPrice = item.ltp * 0.95;
+                 await MstockService.placeCoverOrder(symbol, item.lotSize || 1, orderPrice, slPrice);
+                 clearSymbolFromDesk(symbol);
                  return { success: true, message: `Placed Cover Order for ${symbol} @ RS ${orderPrice.toFixed(2)} and SL @ RS ${slPrice.toFixed(2)}` };
              }
          } catch (e: any) {
