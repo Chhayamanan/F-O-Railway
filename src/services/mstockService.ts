@@ -509,20 +509,36 @@ export class MstockService {
         return null;
       }
 
-      console.log("[MSTOCK SERVICE] Fetching portfolio holdings with dynamically generated JWT token...");
-      const response = await axios.get('https://api.mstock.trade/openapi/typeb/portfolio/holdings', {
+      console.log('[MSTOCK SERVICE] Fetching client portfolio holdings...');
+      const url = 'https://api.mstock.trade/openapi/typeb/portfolio/holdings';
+
+      const response = await fetch(url, {
+        method: 'GET',
         headers: {
           'X-Mirae-Version': '1',
-          'Authorization': `Bearer ${jwtToken}`,
           'X-PrivateKey': apiKey,
-        },
-        timeout: 10000
+          // The API explicitly notes 'Bearer jwtToken' format
+          'Authorization': jwtToken.startsWith('Bearer ') ? jwtToken : `Bearer ${jwtToken}`,
+          'Content-Type': 'application/json'
+        }
       });
-      console.log("[MSTOCK SERVICE] Response from API:", JSON.stringify(response.data));
-      return this.normalizeHoldings(response.data);
+
+      if (!response.ok) {
+        throw new Error(`HTTP Error Status: ${response.status}`);
+      }
+
+      const result: any = await response.json();
+
+      if (result.status === "true" && result.data) {
+        console.log(`[MSTOCK SERVICE] Successfully retrieved ${result.data.length} portfolio items.`);
+        return this.normalizeHoldings(result.data);
+      } else {
+        console.error(`[MSTOCK SERVICE] Portfolio fetch failed message: ${result.message} (Code: ${result.errorcode})`);
+        return null;
+      }
     } catch (error: any) {
-      console.error("[MSTOCK SERVICE] Error fetching portfolio holdings:", error.response?.data || error.message);
-      throw new Error(`Mstock API Error: ${error.response?.data?.message || error.message}`);
+      console.error('[MSTOCK SERVICE] Network or Parsing Error while retrieving portfolio:', error instanceof Error ? error.message : error);
+      throw new Error(`Mstock API Error: ${error.message}`);
     }
   }
 
