@@ -26,7 +26,8 @@ function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [actionLogs, setActionLogs] = useState<string[]>([]);
   const [isAutoScanning, setIsAutoScanning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'FNO' | 'MTF' | 'INTRADAY'>('FNO');
+  const [activeTab, setActiveTab] = useState<'FNO' | 'MTF' | 'INTRADAY' | 'STOP_LOSS'>('FNO');
+  const [portfolio, setPortfolio] = useState<any[]>([]);
   
   const fetchStatus = async () => {
     try {
@@ -43,8 +44,29 @@ function App() {
     } catch {}
   };
 
+  const fetchPortfolio = async () => {
+    try {
+      addLog("Fetching portfolio holdings...");
+      const res = await fetch('/api/portfolio');
+      const data = await res.json();
+      if (data.success && data.portfolio) {
+        setPortfolio(data.portfolio);
+        addLog(`Fetched ${data.portfolio.length} portfolio positions.`);
+      } else {
+        addLog(`Portfolio fetch failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (e) {
+      addLog(`Portfolio fetch error: ${String(e)}`);
+    }
+  };
+
   const runScan = async () => {
     setIsScanning(true);
+    if (activeTab === 'STOP_LOSS') {
+       await fetchPortfolio();
+       setIsScanning(false);
+       return;
+    }
     try {
       const res = await fetch('/api/scan/results');
       const data = await res.json();
@@ -82,6 +104,26 @@ function App() {
     }
   };
 
+  const handleStopLoss = async (symbol: string, quantity: number, avgPrice: number, type: string) => {
+    try {
+      const stopLossPrice = avgPrice * 0.95; // 5% stop loss
+      addLog(`Sending Execute Stop Loss for ${symbol} @ ₹${stopLossPrice.toFixed(2)}...`);
+      const res = await fetch('/api/trade/stop-loss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, quantity, stopLossPrice, type })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addLog(`SUCCESS: ${data.message} (Order ID: ${data.orderId})`);
+      } else {
+        addLog(`ERROR: ${data.error}`);
+      }
+    } catch (e) {
+      addLog(`SL Action failed: ${String(e)}`);
+    }
+  };
+
   const addLog = (msg: string) => {
     setActionLogs(prev => [ `[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 10));
   };
@@ -102,6 +144,12 @@ function App() {
     }
     return () => clearInterval(autoScanInterval);
   }, [isAutoScanning]);
+
+  useEffect(() => {
+    if (activeTab === 'STOP_LOSS') {
+      fetchPortfolio();
+    }
+  }, [activeTab]);
 
   const filteredCeoDesk = ceoDesk.filter(x => {
     if (activeTab === 'FNO') return x.type === 'FUT' || x.type === 'OPTIONS' || !x.type;
@@ -173,12 +221,71 @@ function App() {
           >
             Intraday
           </button>
+          <button 
+            onClick={() => setActiveTab('STOP_LOSS')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'STOP_LOSS' ? 'text-rose-400 border-b-2 border-rose-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            Stop Loss
+          </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Scan Scope Column */}
           <div className="lg:col-span-2 space-y-6">
+             {activeTab === 'STOP_LOSS' ? (
+                <div className="bg-rose-950/20 border border-rose-900/50 rounded-xl overflow-hidden">
+                  <div className="bg-rose-900/40 p-4 border-b border-rose-900/50 flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                       <AlertCircle className="text-rose-400" />
+                       <h2 className="text-lg font-medium text-rose-100">Portfolio Margin Drop (Stop Loss)</h2>
+                     </div>
+                     <button onClick={fetchPortfolio} className="text-sm bg-rose-900/50 hover:bg-rose-800 text-rose-200 px-3 py-1.5 rounded transition-colors border border-rose-700/50">
+                        Refresh Portfolio
+                     </button>
+                  </div>
+                  <div className="p-4 space-y-4">
+                    {portfolio.filter(p => p.type === 'MTF' || p.type === 'FNO').length === 0 ? (
+                      <div className="text-zinc-500 text-center py-8">No margin traded or future stocks found in portfolio.</div>
+                    ) : portfolio.filter(p => p.type === 'MTF' || p.type === 'FNO').map((item, idx) => (
+                      <div key={idx} className="bg-black/40 border border-rose-900/30 p-5 rounded-lg flex flex-col md:flex-row justify-between gap-4">
+                         <div className="space-y-2 flex-grow">
+                            <div className="flex items-baseline gap-3">
+                              <span className="text-xl font-bold text-white">{item.symbol}</span>
+                              <span className="text-rose-400 font-mono flex items-center gap-1">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${item.type === 'FNO' ? 'bg-indigo-900/50 border-indigo-700 text-indigo-300' : 'bg-rose-900/50 border-rose-700 text-rose-300'}`}>
+                                   {item.type}
+                                </span>
+                              </span>
+                            </div>
+                            <div className="text-sm text-zinc-400 grid grid-cols-2 gap-x-6 gap-y-1">
+                               <div>Avg Buy Price: <span className="text-white">₹{item.avgPrice.toFixed(2)}</span></div>
+                               <div>Current Price: <span className="text-white">₹{item.currentPrice.toFixed(2)}</span></div>
+                               <div>Qty: <span className="text-white">{item.qty}</span></div>
+                               <div>Value: <span className="text-white">₹{item.value.toLocaleString()}</span></div>
+                               
+                               <div className="col-span-2 mt-2 pt-2 border-t border-rose-900/30">
+                                  <div className="flex justify-between items-center text-rose-200">
+                                    <span>Calculated Stop Loss (5%): <span className="font-mono text-rose-400 text-lg font-bold">₹{(item.avgPrice * 0.95).toFixed(2)}</span></span>
+                                  </div>
+                               </div>
+                            </div>
+                         </div>
+                         
+                         <div className="flex flex-row md:flex-col justify-center">
+                            <button 
+                              onClick={() => handleStopLoss(item.symbol, item.qty, item.avgPrice, item.type)}
+                              className="bg-rose-600 hover:bg-rose-500 text-white px-6 py-2 rounded font-medium flex items-center justify-center gap-2 transition-colors border border-rose-500/50 h-fit"
+                            >
+                              <AlertCircle size={16} /> Execute 5% SL
+                            </button>
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+             ) : (
+             <React.Fragment>
              {/* CEO Desk (High Priority) */}
              {filteredCeoDesk.length > 0 && (
                <div className="bg-emerald-950/20 border border-emerald-900/50 rounded-xl overflow-hidden">
@@ -331,6 +438,8 @@ function App() {
                     </table>
                  </div>
              </div>
+             </React.Fragment>
+             )}
           </div>
 
           {/* Side Panel: Action Logs */}

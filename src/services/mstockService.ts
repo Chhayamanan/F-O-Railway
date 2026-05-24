@@ -401,6 +401,90 @@ export class MstockService {
     }
   }
 
+  static async placeStopLossOrder(symbol: string, quantity: number, stopLossPrice: number, productType: string = "MTF") {
+    const apiKey = process.env.MSTOCK_API_KEY;
+    
+    let sessionToken = null;
+    try {
+        sessionToken = await this.getMstockJwtToken();
+    } catch (e: any) {
+        throw new Error("Mstock Auth Failed: " + e.message);
+    }
+    
+    if (!apiKey || !sessionToken) {
+      throw new Error("Mstock Auth Failed. Missing API Key or session is not active. Cannot trade.");
+    }
+    
+    // For EQ we use getSymbolToken, for NFO we use getFutureSymbolToken
+    let isFno = false;
+    let symbolInfo: any = await this.getSymbolToken(symbol, apiKey!, sessionToken);
+    
+    if (!symbolInfo) {
+       symbolInfo = await this.getFutureSymbolToken(symbol, apiKey!, sessionToken);
+       isFno = true;
+    }
+    
+    if (!symbolInfo) {
+       throw new Error(`Symbol token not found for ${symbol}. Cannot resolve symbol for stop loss.`);
+    }
+
+    const orderUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
+
+    const orderHeaders = {
+      'X-Mirae-Version': '1',
+      'X-PrivateKey': apiKey,
+      'Authorization': `Bearer ${sessionToken}`,
+      'Content-Type': 'application/json'
+    };
+
+    try {
+      const orderPayload = {
+        variety: "regular",
+        tradingsymbol: symbolInfo.tradingSymbol,
+        symboltoken: symbolInfo.token,
+        exchange: isFno ? "NFO" : "NSE",
+        transactiontype: "SELL",       
+        ordertype: "SL-LMT",   // Alternatively "SL" depending on broker
+        quantity: quantity.toString(),
+        producttype: isFno ? "INTRADAY" : productType, // Usually MTF or DELIVERY
+        price: (Math.round(stopLossPrice * 0.99 * 20) / 20).toFixed(2), // slight buffer below trigger
+        triggerprice: (Math.round(stopLossPrice * 20) / 20).toFixed(2),            
+        squareoff: "0",               
+        stoploss: "0",                
+        trailingStopLoss: "",         
+        disclosedquantity: "0",        
+        duration: "DAY",              
+        ordertag: ""                  
+      };
+
+      console.log(`[BROKER] Placing Stop Loss Order — full payload: ${JSON.stringify(orderPayload)}`);
+
+      const response = await axios({
+        method: 'POST',
+        url: orderUrl,
+        headers: orderHeaders,
+        data: orderPayload
+      });
+
+      console.log("[SUCCESS] Broker Accepted Request:", response.data);
+      if (response.data?.status === 'true' || response.data?.status === true || response.data?.status === 'success') {
+        return response.data?.data?.orderid;
+      } else {
+        throw new Error(response.data?.message || "Order rejected by broker");
+      }
+    } catch (error: any) {
+      console.error(`[ERROR] Stop Loss Order placement failed for ${symbolInfo.tradingSymbol}:`);
+      if (error.response) {
+        console.error(`Status Code: ${error.response.status}`);
+        console.error("Server Message:", error.response.data);
+        throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing order on Mstock"}`);
+      } else {
+        console.error("Network Error:", error.message);
+        throw new Error(`ERROR: ${error.message || "Unknown error placing order on Mstock"}`);
+      }
+    }
+  }
+
   static async getPortfolioHoldings() {
     const apiKey = process.env.MSTOCK_API_KEY || process.env.BROKER_API_KEY;
     
@@ -516,13 +600,24 @@ export class MstockService {
       const value = Number((qty * currentPrice).toFixed(2));
       const pnl = Number((value - (qty * avgPrice)).toFixed(2));
 
+      let type = 'CASH';
+      const cleanSymbol = symbol.replace('.NS', '').replace('.BO', '');
+      const { FNO_STOCKS, MTF_MARGINS } = require('./marketDataService');
+      if (FNO_STOCKS.includes(cleanSymbol)) {
+         type = 'FNO';
+      } else if (MTF_MARGINS[cleanSymbol]) {
+         type = 'MTF';
+      }
+
       return {
         symbol,
+        cleanSymbol,
         qty,
         avgPrice: Number(avgPrice.toFixed(2)),
         currentPrice: Number(currentPrice.toFixed(2)),
         pnl,
-        value
+        value,
+        type
       };
     }).filter(Boolean);
   }
