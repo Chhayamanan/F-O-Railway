@@ -150,7 +150,7 @@ export class MstockService {
           data: body 
       });
 
-      const result: Record<string, {price: number, volume: number}> = {};
+      const result: Record<string, {price: number, volume: number, prevClose: number}> = {};
       
       if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
           for (const item of response.data.data.fetched) {
@@ -158,7 +158,8 @@ export class MstockService {
               if (sym) {
                   result[sym] = {
                       price: item.ltp || item.close || 0,
-                      volume: item.volume || item.vtt || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0
+                      volume: item.volume || item.vtt || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
+                      prevClose: item.pc || item.previousClose || item.closePrice || item.close || 0
                   };
               }
           }
@@ -212,7 +213,7 @@ export class MstockService {
           data: body 
       });
 
-      const result: Record<string, {price: number, volume: number, lotSize?: number}> = {};
+      const result: Record<string, {price: number, volume: number, prevClose: number, lotSize?: number}> = {};
       
       if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
           for (const item of response.data.data.fetched) {
@@ -222,6 +223,7 @@ export class MstockService {
                   result[sym] = {
                       price: item.ltp || item.close || 0,
                       volume: item.volume || item.vtt || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
+                      prevClose: item.pc || item.previousClose || item.closePrice || item.close || 0,
                       lotSize: info?.lotSize || 1
                   };
               }

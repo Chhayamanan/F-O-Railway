@@ -41,9 +41,9 @@ async function startServer() {
 
   app.post("/api/scan/ceo-action", async (req, res) => {
     try {
-      const { symbol, action } = req.body;
+      const { symbol, action, type } = req.body;
       if (!symbol || !action) return res.status(400).json({ success: false, error: "Missing symbol or action" });
-      const result = await ScanEngine.actionCeoItem(symbol, action);
+      const result = await ScanEngine.actionCeoItem(symbol, action, type || 'FUT');
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ success: false, error: String(e) });

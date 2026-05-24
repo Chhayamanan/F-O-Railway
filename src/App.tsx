@@ -18,6 +18,7 @@ function App() {
   const [syncedCount, setSyncedCount] = useState(0);
   const [isScanning, setIsScanning] = useState(false);
   const [actionLogs, setActionLogs] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<'FUT' | 'OPTIONS'>('FUT');
   
   const fetchStatus = async () => {
     try {
@@ -52,13 +53,13 @@ function App() {
     setIsScanning(false);
   };
 
-  const handleCeoAction = async (symbol: string, action: 'BUY' | 'HOLD' | 'CANCEL') => {
+  const handleCeoAction = async (symbol: string, action: 'BUY' | 'HOLD' | 'CANCEL', type: 'FUT' | 'OPTIONS' = 'FUT') => {
     try {
-      addLog(`Sending ${action} directive for ${symbol}...`);
+      addLog(`Sending ${action} directive for ${symbol} (${type})...`);
       const res = await fetch('/api/scan/ceo-action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol, action })
+        body: JSON.stringify({ symbol, action, type })
       });
       const data = await res.json();
       if (data.success) {
@@ -82,6 +83,9 @@ function App() {
     const interval = setInterval(fetchStatus, 15000);
     return () => clearInterval(interval);
   }, []);
+
+  const filteredCeoDesk = ceoDesk.filter(x => x.type === activeTab || (!x.type && activeTab === 'FUT'));
+  const filteredScanScope = scanScope.filter(x => x.type === activeTab || (!x.type && activeTab === 'FUT'));
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] text-zinc-100 p-8 font-sans">
@@ -117,53 +121,83 @@ function App() {
           </div>
         </header>
 
+        <div className="flex gap-4 border-b border-zinc-800 pb-2">
+          <button 
+            onClick={() => setActiveTab('FUT')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'FUT' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            Equity / Futures Scan
+          </button>
+          <button 
+            onClick={() => setActiveTab('OPTIONS')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'OPTIONS' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            Options Scan
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Scan Scope Column */}
           <div className="lg:col-span-2 space-y-6">
              {/* CEO Desk (High Priority) */}
-             {ceoDesk.length > 0 && (
+             {filteredCeoDesk.length > 0 && (
                <div className="bg-emerald-950/20 border border-emerald-900/50 rounded-xl overflow-hidden">
                  <div className="bg-emerald-900/40 p-4 border-b border-emerald-900/50 flex items-center gap-3">
                     <AlertCircle className="text-emerald-400 animate-pulse" />
                     <h2 className="text-lg font-medium text-emerald-100">CEO Desk (Action Required)</h2>
                  </div>
                  <div className="p-4 space-y-4">
-                   {ceoDesk.map((item, idx) => (
+                   {filteredCeoDesk.map((item, idx) => (
                      <div key={idx} className="bg-black/40 border border-emerald-900/30 p-5 rounded-lg flex flex-col md:flex-row justify-between gap-4">
-                        <div className="space-y-2">
+                        <div className="space-y-2 flex-grow">
                            <div className="flex items-baseline gap-3">
                              <span className="text-xl font-bold text-white">{item.symbol}</span>
                              <span className="text-emerald-400 font-mono flex items-center gap-1">
                                <TrendingUp size={14} /> ₹{item.ltp.toFixed(2)}
                              </span>
+                             {item.changePct !== undefined && (
+                               <span className={`text-sm font-mono ${item.changePct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                 {item.changePct >= 0 ? '+' : ''}{item.changePct.toFixed(2)}%
+                               </span>
+                             )}
+                             {item.type === 'OPTIONS' && (
+                               <span className="bg-indigo-900/50 text-indigo-300 text-xs px-2 py-0.5 rounded font-mono border border-indigo-700/50">
+                                 BUY {item.recommendedOption}
+                               </span>
+                             )}
                            </div>
                            <div className="text-sm text-zinc-400 grid grid-cols-2 gap-x-6 gap-y-1">
                               <div>90D High: <span className="text-white">₹{item.high90d.toFixed(2)}</span></div>
-                              <div>Volume: <span className="text-white">{(item.latestVolume/1000).toFixed(1)}k</span> <span className="text-xs text-zinc-500">(Avg: {(item.avgVol90d/1000).toFixed(1)}k)</span></div>
+                              <div className="flex items-center gap-2">
+                                Volume: <span className="text-white">{(item.latestVolume/1000).toFixed(1)}k</span> <span className="text-xs text-zinc-500">(Avg: {(item.avgVol90d/1000).toFixed(1)}k)</span>
+                                {item.volMultiplier !== undefined && (
+                                   <span className="text-amber-400 bg-amber-900/30 px-1.5 rounded text-xs ml-1">{item.volMultiplier.toFixed(1)}x</span>
+                                )}
+                              </div>
                               
                               <div className="col-span-2 mt-2 pt-2 border-t border-emerald-900/30 text-amber-200">
-                                 <div>Estimated Contract Value: <span className="font-mono text-amber-400">₹{item.contractValue?.toLocaleString(undefined, {minimumFractionDigits: 2})}</span></div>
-                                 <div>Risk Value (5% SL): <span className="font-mono text-rose-400">₹{item.riskValue?.toLocaleString(undefined, {minimumFractionDigits: 2})}</span></div>
+                                 <div>Estimated Contract Value: <span className="font-mono text-amber-400">₹{item.contractValue?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 'N/A'}</span></div>
+                                 <div>Risk Value (5% SL): <span className="font-mono text-rose-400">₹{item.riskValue?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 'N/A'}</span></div>
                               </div>
                            </div>
                         </div>
                         
                         <div className="flex flex-row md:flex-col gap-2 justify-center">
                            <button 
-                             onClick={() => handleCeoAction(item.symbol, 'BUY')}
+                             onClick={() => handleCeoAction(item.symbol, 'BUY', item.type || 'FUT')}
                              className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded font-medium flex items-center justify-center gap-2 transition-colors border border-emerald-500/50"
                            >
                              <CheckCircle size={16} /> Execute Buy
                            </button>
                            <button 
-                             onClick={() => handleCeoAction(item.symbol, 'HOLD')}
+                             onClick={() => handleCeoAction(item.symbol, 'HOLD', item.type || 'FUT')}
                              className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-2 rounded font-medium flex items-center justify-center gap-2 transition-colors border border-zinc-700"
                            >
                              <Clock size={16} /> Hold (Keep Open)
                            </button>
                            <button 
-                             onClick={() => handleCeoAction(item.symbol, 'CANCEL')}
+                             onClick={() => handleCeoAction(item.symbol, 'CANCEL', item.type || 'FUT')}
                              className="bg-rose-950 hover:bg-rose-900 text-rose-200 px-6 py-2 rounded font-medium flex items-center justify-center gap-2 transition-colors border border-rose-900"
                            >
                              <XCircle size={16} /> Cancel (Remove)
@@ -198,19 +232,34 @@ function App() {
                           </tr>
                        </thead>
                        <tbody className="divide-y divide-zinc-800/50">
-                          {scanScope.length === 0 ? (
+                          {filteredScanScope.length === 0 ? (
                             <tr>
                               <td colSpan={6} className="p-8 text-center text-zinc-500">
                                 {isScanning ? "Scanning universe..." : "No stocks currently in scan scope."}
                               </td>
                             </tr>
-                          ) : scanScope.map((item, idx) => (
+                          ) : filteredScanScope.map((item, idx) => (
                              <tr key={idx} className="hover:bg-zinc-800/20 transition-colors">
-                                <td className="p-4 font-bold text-indigo-300">{item.symbol}</td>
-                                <td className="p-4 font-mono text-zinc-200">₹{item.ltp.toFixed(2)}</td>
+                                <td className="p-4 font-bold text-indigo-300">
+                                   {item.symbol}
+                                   {item.type === 'OPTIONS' && (
+                                      <span className="ml-2 bg-indigo-900/50 text-indigo-300 text-[10px] px-1.5 py-0.5 rounded border border-indigo-700/50">OPT</span>
+                                   )}
+                                </td>
+                                <td className="p-4 font-mono text-zinc-200">
+                                  ₹{item.ltp.toFixed(2)}
+                                  {item.changePct !== undefined && (
+                                    <span className={`block text-[10px] ${item.changePct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                      {item.changePct >= 0 ? '+' : ''}{item.changePct.toFixed(2)}%
+                                    </span>
+                                  )}
+                                </td>
                                 <td className="p-4 font-mono text-zinc-500">₹{item.high90d.toFixed(2)}</td>
                                 <td className={`p-4 font-mono ${item.latestVolume >= 2 * item.avgVol90d ? 'text-amber-400' : 'text-zinc-500'}`}>
                                   {(item.latestVolume).toLocaleString()}
+                                  {item.volMultiplier !== undefined && (
+                                     <span className="block text-[10px] text-amber-500">{item.volMultiplier.toFixed(1)}x avg</span>
+                                  )}
                                 </td>
                                 <td className="p-4 font-mono text-zinc-500">{(item.avgVol90d).toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
                                 <td className="p-4">
