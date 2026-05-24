@@ -85,8 +85,8 @@ export class ScanEngine {
          const isOptScanScope = (spotPrice >= optHighDist * cached.high90d) || (volMultiplier >= optVolMult) || isCrossHigh;
          
          const isOptionsEligible = FNO_STOCKS.includes(plainSymbol) && isOptScanScope;
-         // Compare current LTP with Yesterday's close
-         const optionAction = ltp > futPrevClose ? 'CALL' : 'PUT';
+         // Compare current day's change
+         const optionAction = changePct >= 0 ? 'CALL' : 'PUT';
          
          const lotSize = future?.lotSize || this.MOCK_LOT_SIZES[plainSymbol] || 500;
          const contractValue = ltp * lotSize;
@@ -230,20 +230,20 @@ export class ScanEngine {
       };
 
       if (action === 'BUY') {
-         if (type === 'OPTIONS') {
+         const orderPrice = item.ltp * 0.995;
+         const slPrice = item.ltp * 0.95;
+         try {
+             await MstockService.placeCoverOrder(symbol, item.lotSize || 1, orderPrice, slPrice);
              clearSymbolFromDesk(symbol);
-             return { success: true, message: `Placed Buy Order for ${item.recommendedOption} Option on ${symbol} (Simulated for Options)` };
-         } else {
-             const orderPrice = item.ltp * 0.995;
-             const slPrice = item.ltp * 0.95;
-             try {
-                 await MstockService.placeCoverOrder(symbol, item.lotSize || 1, orderPrice, slPrice);
-                 clearSymbolFromDesk(symbol);
+             
+             if (type === 'OPTIONS') {
+                 return { success: true, message: `Placed Cover Order for ${item.recommendedOption} Option on ${symbol} @ RS ${orderPrice.toFixed(2)} and SL @ RS ${slPrice.toFixed(2)}` };
+             } else {
                  return { success: true, message: `Placed Cover Order for ${symbol} @ RS ${orderPrice.toFixed(2)} and SL @ RS ${slPrice.toFixed(2)}` };
-             } catch (e: any) {
-                 console.error(`[CEO DESK] Cover Order failed for ${symbol}: ${e.message}`);
-                 return { success: false, message: e.message };
              }
+         } catch (e: any) {
+             console.error(`[CEO DESK] Cover Order failed for ${symbol}: ${e.message}`);
+             return { success: false, message: e.message };
          }
       } else if (action === 'HOLD') {
          return { success: true, message: `Holding ${symbol} (${type}). Item remains open.` };
