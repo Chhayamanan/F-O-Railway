@@ -94,12 +94,12 @@ async function startServer() {
   
   app.post("/api/trade/stop-loss", async (req, res) => {
     try {
-      const { symbol, quantity, stopLossPrice, type } = req.body;
+      const { symbol, quantity, stopLossPrice, type, symbolToken, tradingSymbol } = req.body;
       if (!symbol || !quantity || !stopLossPrice) {
         return res.status(400).json({ success: false, error: "Missing required fields for stop loss." });
       }
       const productType = type === 'FNO' ? 'INTRADAY' : 'MTF';
-      const orderId = await MstockService.placeStopLossOrder(symbol, quantity, stopLossPrice, productType);
+      const orderId = await MstockService.placeStopLossOrder(symbol, quantity, stopLossPrice, productType, symbolToken, tradingSymbol);
       res.json({ success: true, orderId, message: `Placed SL for ${symbol} at ₹${stopLossPrice}` });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });

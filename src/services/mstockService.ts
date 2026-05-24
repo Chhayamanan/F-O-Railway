@@ -401,7 +401,7 @@ export class MstockService {
     }
   }
 
-  static async placeStopLossOrder(symbol: string, quantity: number, stopLossPrice: number, productType: string = "MTF") {
+  static async placeStopLossOrder(symbol: string, quantity: number, stopLossPrice: number, productType: string = "MTF", providedSymbolToken?: string, providedTradingSymbol?: string) {
     const apiKey = process.env.MSTOCK_API_KEY;
     
     let sessionToken = null;
@@ -417,11 +417,23 @@ export class MstockService {
     
     // For EQ we use getSymbolToken, for NFO we use getFutureSymbolToken
     let isFno = false;
-    let symbolInfo: any = await this.getSymbolToken(symbol, apiKey!, sessionToken);
-    
-    if (!symbolInfo) {
-       symbolInfo = await this.getFutureSymbolToken(symbol, apiKey!, sessionToken);
-       isFno = true;
+    let symbolInfo: any = null;
+
+    if (providedSymbolToken && providedTradingSymbol) {
+       symbolInfo = {
+          token: providedSymbolToken,
+          tradingSymbol: providedTradingSymbol
+       };
+       if (symbol.includes("^") || symbol.includes("FUT")) {
+          isFno = true;
+       }
+    } else {
+       symbolInfo = await this.getSymbolToken(symbol, apiKey!, sessionToken);
+      
+       if (!symbolInfo) {
+         symbolInfo = await this.getFutureSymbolToken(symbol, apiKey!, sessionToken);
+         isFno = true;
+       }
     }
     
     if (!symbolInfo) {
@@ -544,6 +556,7 @@ export class MstockService {
         item.symbol,
         item.tradingSymbol,
         item.trading_symbol,
+        item.tradingsymbol,
         item.scripName,
         item.scripCode,
         item.isin,
@@ -574,6 +587,7 @@ export class MstockService {
       const avgPriceCandidates = [
         item.avgPrice,
         item.averagePrice,
+        item.averageprice,
         item.avg_price,
         item.buyPrice,
         item.avg_cost,
@@ -600,6 +614,10 @@ export class MstockService {
       const value = Number((qty * currentPrice).toFixed(2));
       const pnl = Number((value - (qty * avgPrice)).toFixed(2));
 
+      // Extract symboltoken and plain tradingsymbol for order placement
+      const symbolToken = item.symboltoken || item.symbolToken || item.token || "";
+      const rawTradingSymbol = item.tradingsymbol || item.tradingSymbol || item.symbol || "";
+
       let type = 'CASH';
       const cleanSymbol = symbol.replace('.NS', '').replace('.BO', '');
       const { FNO_STOCKS, MTF_MARGINS } = require('./marketDataService');
@@ -612,6 +630,8 @@ export class MstockService {
       return {
         symbol,
         cleanSymbol,
+        tradingSymbol: rawTradingSymbol,
+        symbolToken: String(symbolToken),
         qty,
         avgPrice: Number(avgPrice.toFixed(2)),
         currentPrice: Number(currentPrice.toFixed(2)),

@@ -104,14 +104,14 @@ function App() {
     }
   };
 
-  const handleStopLoss = async (symbol: string, quantity: number, avgPrice: number, type: string) => {
+  const handleStopLoss = async (symbol: string, quantity: number, avgPrice: number, type: string, symbolToken?: string, tradingSymbol?: string) => {
     try {
       const stopLossPrice = avgPrice * 0.95; // 5% stop loss
       addLog(`Sending Execute Stop Loss for ${symbol} @ ₹${stopLossPrice.toFixed(2)}...`);
       const res = await fetch('/api/trade/stop-loss', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol, quantity, stopLossPrice, type })
+        body: JSON.stringify({ symbol, quantity, stopLossPrice, type, symbolToken, tradingSymbol })
       });
       const data = await res.json();
       if (data.success) {
@@ -274,7 +274,7 @@ function App() {
                          
                          <div className="flex flex-row md:flex-col justify-center">
                             <button 
-                              onClick={() => handleStopLoss(item.symbol, item.qty, item.avgPrice, item.type)}
+                              onClick={() => handleStopLoss(item.symbol, item.qty, item.avgPrice, item.type, item.symbolToken, item.tradingSymbol)}
                               className="bg-rose-600 hover:bg-rose-500 text-white px-6 py-2 rounded font-medium flex items-center justify-center gap-2 transition-colors border border-rose-500/50 h-fit"
                             >
                               <AlertCircle size={16} /> Execute 5% SL
