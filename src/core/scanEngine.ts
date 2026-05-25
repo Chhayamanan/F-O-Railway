@@ -234,14 +234,9 @@ export class ScanEngine {
          
          try {
              if (type === 'OPTIONS') {
-                 // Stop loss at 20% (price drops 20%) -> 0.8 * price
-                 const slPrice = item.ltp * 0.80;
-                 // Target at 40% (price jumps 40%) -> 1.4 * price
-                 const targetPrice = item.ltp * 1.40;
-                 
-                 await MstockService.placeBracketOrder(symbol, item.lotSize || 1, orderPrice, slPrice, targetPrice);
+                 const res = await MstockService.placeOptionBracketOrder(symbol, item.recommendedOption || 'CALL', item.spotPrice || item.ltp, item.lotSize || 1);
                  clearSymbolFromDesk(symbol);
-                 return { success: true, message: `Placed Bracket Order for ${item.recommendedOption} Option on ${symbol} @ RS ${orderPrice.toFixed(2)}, SL (-20%) @ RS ${slPrice.toFixed(2)}, TGT (+40%) @ RS ${targetPrice.toFixed(2)}` };
+                 return { success: true, message: `Placed Order for ${item.recommendedOption} Option [${res.tradingSymbol}] @ RS ${res.entryPrice.toFixed(2)}, SL (-20%) @ RS ${res.stopLossPrice.toFixed(2)}, TGT (+40%) @ RS ${res.targetPrice.toFixed(2)}` };
              } else {
                  const slPrice = item.ltp * 0.95;
                  await MstockService.placeCoverOrder(symbol, item.lotSize || 1, orderPrice, slPrice);

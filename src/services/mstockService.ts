@@ -239,6 +239,7 @@ export class MstockService {
 
   private static scripMasterDataMap: Map<string, {token: string; tradingSymbol: string}> | null = null;
   private static scripMasterFuturesMap: Map<string, {token: string; tradingSymbol: string; expiryStr: string; lotSize: number}[]> | null = null;
+  private static scripMasterOptionsMap: Map<string, {token: string; tradingSymbol: string; expiryStr: string; lotSize: number; strike: number; optionType: 'CE' | 'PE'}[]> | null = null;
 
   static async getSymbolToken(symbol: string, apiKey: string, sessionToken: string): Promise<{token: string; tradingSymbol: string} | null> {
     await this.initScripMaster(apiKey, sessionToken);
@@ -258,6 +259,43 @@ export class MstockService {
     });
     
     return sorted[0];
+  }
+
+  static async getAtmOptionSymbolToken(symbol: string, apiKey: string, sessionToken: string, targetOption: 'CALL' | 'PUT', spotPrice: number): Promise<{token: string; tradingSymbol: string; lotSize: number; strike: number} | null> {
+    await this.initScripMaster(apiKey, sessionToken);
+    const options = this.scripMasterOptionsMap?.get(symbol.toUpperCase()) || [];
+    if (options.length === 0) return null;
+
+    const reqOptType = targetOption === 'CALL' ? 'CE' : 'PE';
+    
+    // Sort by expiry
+    const sorted = [...options]
+      .filter(x => x.optionType === reqOptType)
+      .sort((a, b) => {
+        const d1 = new Date(a.expiryStr).getTime();
+        const d2 = new Date(b.expiryStr).getTime();
+        return (d1 || Infinity) - (d2 || Infinity);
+    });
+
+    if (sorted.length === 0) return null;
+
+    // Grab the nearest expiry
+    const nearestExpiry = sorted[0].expiryStr;
+    const currentExpiryOptions = sorted.filter(x => x.expiryStr === nearestExpiry);
+
+    // Find the one with strike closest to spotPrice
+    let closestOpt = currentExpiryOptions[0];
+    let minDiff = Math.abs(closestOpt.strike - spotPrice);
+
+    for (const opt of currentExpiryOptions) {
+        const diff = Math.abs(opt.strike - spotPrice);
+        if (diff < minDiff) {
+            closestOpt = opt;
+            minDiff = diff;
+        }
+    }
+
+    return closestOpt;
   }
 
   private static async initScripMaster(apiKey: string, sessionToken: string) {
@@ -282,6 +320,7 @@ export class MstockService {
 
       this.scripMasterDataMap = new Map();
       this.scripMasterFuturesMap = new Map();
+      this.scripMasterOptionsMap = new Map();
       
       const now = Date.now();
 
@@ -300,7 +339,6 @@ export class MstockService {
         
         if (exchSeg === 'NFO' && instrType === 'FUTSTK') {
            const expiryStr = String(item.expiry || '');
-           // Ensure it has not already expired in the past if possible
            const expDate = new Date(expiryStr).getTime();
            if (!isNaN(expDate) && expDate > now - 86400000) {
                if (!this.scripMasterFuturesMap.has(plainSymbol)) {
@@ -314,8 +352,33 @@ export class MstockService {
                });
            }
         }
+
+        if (exchSeg === 'NFO' && instrType === 'OPTSTK') {
+           const expiryStr = String(item.expiry || '');
+           const expDate = new Date(expiryStr).getTime();
+           if (!isNaN(expDate) && expDate > now - 86400000) {
+               if (!this.scripMasterOptionsMap.has(plainSymbol)) {
+                   this.scripMasterOptionsMap.set(plainSymbol, []);
+               }
+               
+               const rawStrike = Number(item.strike || item.strikeprice);
+               const strike = isNaN(rawStrike) ? 0 : rawStrike / 100; // it's usually in multiples of 100 on Indian exchanges if it has no decimal
+               // Note: check the data format carefully, some might say 'strike' with 2 trailing decimals, eg 250000 = 2500.
+               // It's safer to use parseFloat(item.strike) directly.
+               const parsedStrike = Number.parseFloat(String(item.strike || item.strikeprice));
+
+               this.scripMasterOptionsMap.get(plainSymbol)!.push({
+                   token: String(item.token),
+                   tradingSymbol: String(item.name),
+                   expiryStr,
+                   lotSize: Number(item.lotsize) || 1,
+                   strike: isNaN(parsedStrike) ? 0 : parsedStrike,
+                   optionType: item.optiontype === 'PE' ? 'PE' : 'CE'
+               });
+           }
+        }
       }
-      console.log(`[MSTOCK] Indexed ${this.scripMasterDataMap.size} NSE symbols and ${this.scripMasterFuturesMap.size} Futures symbols.`);
+      console.log(`[MSTOCK] Indexed ${this.scripMasterDataMap.size} NSE symbols, ${this.scripMasterFuturesMap.size} Futures, ${this.scripMasterOptionsMap.size} Options.`);
     }
   }
 
@@ -397,6 +460,129 @@ export class MstockService {
         throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing order on Mstock"}`);
       } else {
         console.error("Network Error:", error.message);
+        throw new Error(`ERROR: ${error.message || "Unknown error placing order on Mstock"}`);
+      }
+    }
+  }
+
+  static async placeOptionBracketOrder(
+    baseSymbol: string, 
+    optionType: 'CALL' | 'PUT', 
+    spotPrice: number, 
+    quantity: number
+  ) {
+    const apiKey = process.env.MSTOCK_API_KEY;
+    
+    let sessionToken = null;
+    try {
+        sessionToken = await this.getMstockJwtToken();
+    } catch (e: any) {
+        throw new Error("Mstock Auth Failed: " + e.message);
+    }
+    
+    if (!apiKey || !sessionToken) {
+      throw new Error("Mstock Auth Failed. Missing API Key or session is not active. Cannot trade.");
+    }
+
+    const symbolInfo = await this.getAtmOptionSymbolToken(baseSymbol, apiKey, sessionToken, optionType, spotPrice);
+    if (!symbolInfo) {
+       throw new Error(`ATM Option symbol token not found for ${baseSymbol}. Market lot and symbol cannot be resolved.`);
+    }
+
+    // Fetch the live option price
+    const quoteUrl = `https://api.mstock.trade/openapi/typeb/marketdata/Livequotes?exchange=NFO&symbolToken=${symbolInfo.token}`;
+    const quoteHeaders = {
+        'X-Mirae-Version': '1',
+        'X-PrivateKey': apiKey,
+        'Authorization': `Bearer ${sessionToken}`
+    };
+
+    let optionLtp = 0;
+    try {
+        const quoteRes = await axios.get(quoteUrl, { headers: quoteHeaders });
+        if (quoteRes.data && quoteRes.data.data && Array.isArray(quoteRes.data.data.fetched) && quoteRes.data.data.fetched.length > 0) {
+            optionLtp = quoteRes.data.data.fetched[0].ltp;
+        }
+    } catch (e: any) {
+        console.warn(`[BROKER] Failed to fetch live option quote for token ${symbolInfo.token}: ${e.message}`);
+    }
+
+    if (!optionLtp || optionLtp <= 0) {
+       throw new Error(`Failed to retrieve live price for option ${symbolInfo.tradingSymbol}. Order aborted.`);
+    }
+
+    // Bracket Logic: 
+    // Target = 40% gain, StopLoss = 20% loss
+    const entryPrice = optionLtp;
+    const stopLossPrice = optionLtp * 0.80;
+    const targetPrice = optionLtp * 1.40;
+
+    const orderUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
+
+    const orderHeaders = {
+      'X-Mirae-Version': '1',
+      'X-PrivateKey': apiKey,
+      'Authorization': `Bearer ${sessionToken}`,
+      'Content-Type': 'application/json'
+    };
+
+    let finalQuantity = quantity;
+    if (quantity < symbolInfo.lotSize) {
+        finalQuantity = symbolInfo.lotSize;
+    } else {
+        finalQuantity = Math.floor(quantity / symbolInfo.lotSize) * symbolInfo.lotSize;
+    }
+
+    const stopLossDiff = Math.abs(entryPrice - stopLossPrice);
+    const targetDiff = Math.abs(targetPrice - entryPrice);
+
+    try {
+      const orderPayload = {
+        variety: "bo",
+        tradingsymbol: symbolInfo.tradingSymbol,
+        symboltoken: symbolInfo.token,
+        exchange: "NFO",
+        transactiontype: "BUY",       
+        ordertype: "LIMIT",
+        quantity: finalQuantity.toString(),
+        producttype: "INTRADAY",
+        price: (Math.round(entryPrice * 20) / 20).toFixed(2),
+        triggerprice: "0",            
+        squareoff: (Math.round(targetDiff * 20) / 20).toFixed(2),               
+        stoploss: (Math.round(stopLossDiff * 20) / 20).toFixed(2),                
+        trailingStopLoss: "",         
+        disclosedquantity: "0",        
+        duration: "DAY",              
+        ordertag: ""                  
+      };
+
+      console.log(`[BROKER] Placing Option Bracket Order — full payload: ${JSON.stringify(orderPayload)}`);
+
+      const response = await axios({
+        method: 'POST',
+        url: orderUrl,
+        headers: orderHeaders,
+        data: orderPayload
+      });
+
+      console.log("[SUCCESS] Broker Accepted Request:", response.data);
+      if (response.data?.status === 'true' || response.data?.status === true || response.data?.status === 'success') {
+        const orderId = response.data?.data?.orderid;
+        return {
+            orderId,
+            entryPrice,
+            stopLossPrice,
+            targetPrice,
+            tradingSymbol: symbolInfo.tradingSymbol
+        };
+      } else {
+        throw new Error(response.data?.message || "Order rejected by broker");
+      }
+    } catch (error: any) {
+      console.error(`[ERROR] Option Bracket Order placement failed for ${symbolInfo.tradingSymbol}:`);
+      if (error.response) {
+        throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing order on Mstock"}`);
+      } else {
         throw new Error(`ERROR: ${error.message || "Unknown error placing order on Mstock"}`);
       }
     }
