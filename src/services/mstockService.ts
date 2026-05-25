@@ -382,7 +382,7 @@ export class MstockService {
     }
   }
 
-  static async placeCoverOrder(symbol: string, quantity: number = 1, entryPrice: number, stopLossPrice: number) {
+  static async placeCoverOrder(symbol: string, quantity: number = 1, entryPrice: number, stopLossPrice: number, direction: 'BUY' | 'SELL' = 'BUY') {
     const apiKey = process.env.MSTOCK_API_KEY;
     
     let sessionToken = null;
@@ -423,7 +423,7 @@ export class MstockService {
         tradingsymbol: symbolInfo.tradingSymbol,
         symboltoken: symbolInfo.token,
         exchange: "NFO",
-        transactiontype: "BUY",       
+        transactiontype: direction,       
         ordertype: "LIMIT",
         quantity: finalQuantity.toString(),
         producttype: "INTRADAY",

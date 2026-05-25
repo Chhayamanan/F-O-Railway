@@ -18,6 +18,7 @@ export interface ScanResult {
   volMultiplier?: number;
   type?: 'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY';
   recommendedOption?: 'CALL' | 'PUT';
+  recommendedAction?: 'BUY' | 'SELL';
   mtfMargin?: number;
   message?: string;
   qty?: number;
@@ -39,12 +40,16 @@ export class ScanEngine {
     futHighDistance?: number, 
     futBaseVolMultiplier?: number,
     optHighDistance?: number,
-    optBaseVolMultiplier?: number
+    optBaseVolMultiplier?: number,
+    mtfHighDistance?: number,
+    mtfBaseVolMultiplier?: number,
+    intradayHighDistance?: number,
+    intradayBaseVolMultiplier?: number
   } = {}) {
-    const futHighDist = config.futHighDistance || 0.98;
     const futVolMult = config.futBaseVolMultiplier || 2.0;
-    const optHighDist = config.optHighDistance || 0.98;
     const optVolMult = config.optBaseVolMultiplier || 2.0;
+    const mtfVolMult = config.mtfBaseVolMultiplier || 3.0;
+    const intradayVolMult = config.intradayBaseVolMultiplier || 2.5;
     const results: ScanResult[] = [];
     const newCeoItems: ScanResult[] = [];
     
@@ -79,129 +84,70 @@ export class ScanEngine {
          const volMultiplier = cached.avgVol90d > 0 ? (latestVolume / cached.avgVol90d) : 0;
          
          const isCrossHigh = spotPrice > cached.high90d;
-         
-         // Separate criteria for Futures and Options
-         const isFutScanScope = (spotPrice >= futHighDist * cached.high90d) || (volMultiplier >= futVolMult) || isCrossHigh;
-         const isOptScanScope = (volMultiplier >= optVolMult);
-         
-         const isOptionsEligible = FNO_STOCKS.includes(plainSymbol) && isOptScanScope;
-         // Compare current day's change
-         const optionAction = changePct >= 0 ? 'CALL' : 'PUT';
+         const rangePct = cached.low90d && cached.low90d > 0 ? (cached.high90d - cached.low90d) / cached.low90d : 0;
+         const isRangeOk = rangePct > 0 && rangePct <= 0.30;
          
          const lotSize = future?.lotSize || this.MOCK_LOT_SIZES[plainSymbol] || 500;
          const contractValue = ltp * lotSize;
          const riskValue = contractValue * 0.05; // 5% stop loss risk
          const mtfMargin = MTF_MARGINS[plainSymbol];
 
+         // --- FUTURES ---
+         // 1. Range <= 30%
+         // 2. Crosses high
+         // 3. Vol >= x times average
+         const isFutScanScope = isRangeOk && isCrossHigh && volMultiplier >= futVolMult;
          if (isFutScanScope) {
             const item: ScanResult = {
-               symbol: plainSymbol,
-               ltp,
-               spotPrice,
-               latestVolume,
-               high90d: cached.high90d,
-               avgVol90d: cached.avgVol90d,
-               isCeoDesk: true,
-               contractValue,
-               riskValue,
-               lotSize,
-               changePct,
-               volMultiplier,
-               type: 'FUT',
-               mtfMargin
+               symbol: plainSymbol, ltp, spotPrice, latestVolume, high90d: cached.high90d, low90d: cached.low90d, avgVol90d: cached.avgVol90d,
+               isCeoDesk: true, contractValue, riskValue, lotSize, changePct, volMultiplier, type: 'FUT', mtfMargin
             };
             results.push(item);
-            
-            if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'FUT')) {
-               newCeoItems.push(item);
-            }
+            if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'FUT')) newCeoItems.push(item);
          }
 
+         // --- OPTIONS ---
+         // 1. Check average volume vs current volume (volMultiplier >= optVolMult)
+         // 2. Buy CALL if change +ve, PUT if -ve
+         const isOptScanScope = volMultiplier >= optVolMult;
+         const isOptionsEligible = FNO_STOCKS.includes(plainSymbol) && isOptScanScope;
          if (isOptionsEligible) {
+            const optionAction = changePct >= 0 ? 'CALL' : 'PUT';
             const optionsItem: ScanResult = {
-               symbol: plainSymbol,
-               ltp,
-               spotPrice,
-               latestVolume,
-               high90d: cached.high90d,
-               avgVol90d: cached.avgVol90d,
-               isCeoDesk: true,
-               changePct,
-               volMultiplier,
-               type: 'OPTIONS',
-               recommendedOption: optionAction,
-               mtfMargin
+               symbol: plainSymbol, ltp, spotPrice, latestVolume, high90d: cached.high90d, low90d: cached.low90d, avgVol90d: cached.avgVol90d,
+               isCeoDesk: true, changePct, volMultiplier, type: 'OPTIONS', recommendedOption: optionAction, mtfMargin
             };
             results.push(optionsItem);
-
-            if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'OPTIONS')) {
-               newCeoItems.push(optionsItem);
-            }
+            if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'OPTIONS')) newCeoItems.push(optionsItem);
          }
 
+         // --- MTF ---
+         // 1. Range <= 30%
+         // 2. Crosses high
+         // 3. Vol >= x times average
          const isMtfEligible = Object.keys(MTF_MARGINS).includes(plainSymbol);
-         if (isMtfEligible && cached.low90d && cached.low90d > 0) {
-            const rangePct = (cached.high90d - cached.low90d) / cached.low90d;
-            if (rangePct <= 0.30) {
-               // In MTF scan scope
-               let mtfItem: ScanResult = {
-                  symbol: plainSymbol,
-                  ltp: spotPrice,
-                  spotPrice,
-                  latestVolume,
-                  high90d: cached.high90d,
-                  low90d: cached.low90d,
-                  avgVol90d: cached.avgVol90d,
-                  isCeoDesk: false,
-                  changePct,
-                  volMultiplier,
-                  type: 'MTF',
-                  mtfMargin
-               };
+         const isMtfScanScope = isRangeOk && isCrossHigh && volMultiplier >= mtfVolMult;
+         if (isMtfEligible && isMtfScanScope) {
+             const mtfItem: ScanResult = {
+                symbol: plainSymbol, ltp: spotPrice, spotPrice, latestVolume, high90d: cached.high90d, low90d: cached.low90d, avgVol90d: cached.avgVol90d,
+                isCeoDesk: true, changePct, volMultiplier, type: 'MTF', mtfMargin
+             };
+             results.push(mtfItem);
+             if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'MTF')) newCeoItems.push(mtfItem);
+         }
 
-               const isMtfSignal = spotPrice > cached.high90d && latestVolume >= 3 * cached.avgVol90d;
-               if (isMtfSignal && spotPrice <= 3000) {
-                  mtfItem.isCeoDesk = true;
-
-                  const lastBuyTimestamp = this.recentMTFBuys[plainSymbol];
-                  const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
-                  const canBuy = !lastBuyTimestamp || (Date.now() - lastBuyTimestamp) > twoDaysMs;
-
-                  if (canBuy) {
-                     if (mtfMargin && mtfMargin > 0) {
-                        const marginFactor = mtfMargin / 100;
-                        const qty = Math.floor(10000 / (spotPrice * marginFactor));
-
-                        if (qty > 0) {
-                           mtfItem.qty = qty;
-                           try {
-                              // We auto-buy for MTF
-                              await MstockService.placeCoverOrder(plainSymbol, qty, spotPrice * 0.995, spotPrice * 0.95);
-                              console.log(`[MTF BUY] Auto bought ${qty} ${plainSymbol} worth 10000 RS in margin`);
-                              this.recentMTFBuys[plainSymbol] = Date.now();
-                              mtfItem.message = `Auto Bought: ${qty} qty @ ${spotPrice.toFixed(2)}`;
-                           } catch (e: any) {
-                              console.error(`[MTF BUY] Failed for ${plainSymbol}: ${e.message}`);
-                              mtfItem.message = `Auto Buy Failed: ${e.message}`;
-                           }
-                        } else {
-                           mtfItem.message = `Signal valid but calculated qty was 0`;
-                        }
-                     }
-                  } else {
-                     mtfItem.message = `Valid signal but skipped rebuy (within 2 days)`;
-                  }
-               } else if (isMtfSignal && spotPrice > 3000) {
-                  mtfItem.isCeoDesk = true;
-                  mtfItem.message = `Valid signal but price > 3000 (Ignored)`;
-               }
-
-               results.push(mtfItem);
-
-               if (mtfItem.isCeoDesk && !this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'MTF')) {
-                  newCeoItems.push(mtfItem);
-               }
-            }
+         // --- INTRADAY ---
+         // 1. Check average volume vs current volume (volMultiplier >= intradayVolMult)
+         // 2. Buy if +ve, Sell if -ve
+         const isIntradayScanScope = volMultiplier >= intradayVolMult;
+         if (isIntradayScanScope) {
+             const intradayAction = changePct >= 0 ? 'BUY' : 'SELL';
+             const intradayItem: ScanResult = {
+                symbol: plainSymbol, ltp: spotPrice, spotPrice, latestVolume, high90d: cached.high90d, low90d: cached.low90d, avgVol90d: cached.avgVol90d,
+                isCeoDesk: true, changePct, volMultiplier, type: 'INTRADAY', recommendedAction: intradayAction, mtfMargin
+             };
+             results.push(intradayItem);
+             if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'INTRADAY')) newCeoItems.push(intradayItem);
          }
        }
     }
@@ -229,19 +175,25 @@ export class ScanEngine {
           this.ceoDeskItems = this.ceoDeskItems.filter(x => x.symbol !== sym);
       };
 
-      if (action === 'BUY') {
-         const orderPrice = item.ltp * 0.995;
+      if (action === 'BUY') { // 'BUY' here means EXECUTE signal
+         const direction = item.recommendedAction === 'SELL' ? 'SELL' : 'BUY';
+         const orderPrice = direction === 'BUY' ? item.ltp * 0.995 : item.ltp * 1.005;
          
          try {
              if (type === 'OPTIONS') {
                  const res = await MstockService.placeOptionBracketOrder(symbol, item.recommendedOption || 'CALL', item.spotPrice || item.ltp, item.lotSize || 1);
                  clearSymbolFromDesk(symbol);
                  return { success: true, message: `Placed Order for ${item.recommendedOption} Option [${res.tradingSymbol}] @ RS ${res.entryPrice.toFixed(2)}, SL (-20%) @ RS ${res.stopLossPrice.toFixed(2)}, TGT (+40%) @ RS ${res.targetPrice.toFixed(2)}` };
-             } else {
-                 const slPrice = item.ltp * 0.95;
-                 await MstockService.placeCoverOrder(symbol, item.lotSize || 1, orderPrice, slPrice);
+             } else if (type === 'INTRADAY') {
+                 const slPrice = direction === 'BUY' ? item.ltp * 0.99 : item.ltp * 1.01;
+                 await MstockService.placeCoverOrder(symbol, item.lotSize || 1, orderPrice, slPrice, direction);
                  clearSymbolFromDesk(symbol);
-                 return { success: true, message: `Placed Cover Order for ${symbol} @ RS ${orderPrice.toFixed(2)} and SL @ RS ${slPrice.toFixed(2)}` };
+                 return { success: true, message: `Placed Intraday ${direction} Order for ${symbol} @ RS ${orderPrice.toFixed(2)} and SL @ RS ${slPrice.toFixed(2)}` };
+             } else {
+                 const slPrice = direction === 'BUY' ? item.ltp * 0.95 : item.ltp * 1.05;
+                 await MstockService.placeCoverOrder(symbol, item.lotSize || 1, orderPrice, slPrice, direction);
+                 clearSymbolFromDesk(symbol);
+                 return { success: true, message: `Placed Cover ${direction} Order for ${symbol} @ RS ${orderPrice.toFixed(2)} and SL @ RS ${slPrice.toFixed(2)}` };
              }
          } catch (e: any) {
              console.error(`[CEO DESK] Cover Order failed for ${symbol}: ${e.message}`);

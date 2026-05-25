@@ -254,27 +254,6 @@ function App() {
                <span className="text-sm font-medium text-emerald-400 mr-2">{activeTab} Scanning Config:</span>
                {(activeTab === 'FUT' || activeTab === 'OPTIONS' || activeTab === 'MTF' || activeTab === 'INTRADAY') && (
                  <>
-                   {activeTab !== 'OPTIONS' && (
-                     <div className="flex items-center gap-2 border-l border-zinc-700 pl-4">
-                       <label className="text-xs text-zinc-400 whitespace-nowrap">High Dist (cross):</label>
-                       <input 
-                         type="number" step="0.01" min="0.8" max="1.5" 
-                         value={
-                           activeTab === 'FUT' ? futHighDistance :
-                           activeTab === 'OPTIONS' ? optHighDistance :
-                           activeTab === 'MTF' ? mtfHighDistance : intradayHighDistance
-                         } 
-                         onChange={(e) => {
-                           const val = Number(e.target.value);
-                           if (activeTab === 'FUT') setFutHighDistance(val);
-                           else if (activeTab === 'OPTIONS') setOptHighDistance(val);
-                           else if (activeTab === 'MTF') setMtfHighDistance(val);
-                           else setIntradayHighDistance(val);
-                         }}
-                         className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
-                       />
-                     </div>
-                   )}
                    <div className="flex items-center gap-2">
                      <label className="text-xs text-zinc-400 whitespace-nowrap">Volume Factor:</label>
                      <input 
@@ -407,9 +386,14 @@ function App() {
                                  BUY {item.recommendedOption}
                                </span>
                              )}
+                             {item.type === 'INTRADAY' && item.recommendedAction && (
+                               <span className={`text-xs px-2 py-0.5 rounded font-mono border ${item.recommendedAction === 'BUY' ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700/50' : 'bg-rose-900/50 text-rose-300 border-rose-700/50'}`}>
+                                 {item.recommendedAction} SIGNAL
+                               </span>
+                             )}
                            </div>
                            <div className="text-sm text-zinc-400 grid grid-cols-2 gap-x-6 gap-y-1">
-                              <div>90D High: <span className="text-white">₹{item.high90d.toFixed(2)}</span></div>
+                              <div>90D High: <span className="text-white">₹{item.high90d.toFixed(2)}</span> {item.type !== 'OPTIONS' && item.type !== 'INTRADAY' ? <span className="text-xs text-zinc-500 ml-1">(Range: {item.low90d && item.low90d > 0 ? ((item.high90d - item.low90d) / item.low90d * 100).toFixed(1) : 0}%)</span> : null}</div>
                               <div className="flex items-center gap-2">
                                 Volume: <span className="text-white">{(item.latestVolume/1000).toFixed(1)}k</span> <span className="text-xs text-zinc-500">(Avg: {(item.avgVol90d/1000).toFixed(1)}k)</span>
                                 {item.volMultiplier !== undefined && (
@@ -443,7 +427,11 @@ function App() {
                              onClick={() => handleCeoAction(item.symbol, 'BUY', item.type || 'FUT')}
                              className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded font-medium flex items-center justify-center gap-2 transition-colors border border-emerald-500/50"
                            >
-                             <CheckCircle size={16} /> {item.type === 'OPTIONS' ? `Execute ${item.recommendedOption || 'Option'}` : 'Execute Buy'}
+                             <CheckCircle size={16} /> {
+                                 item.type === 'OPTIONS' ? `Execute ${item.recommendedOption || 'Option'}` : 
+                                 item.type === 'INTRADAY' ? `Execute ${item.recommendedAction || 'Trade'}` : 
+                                 'Execute Buy'
+                             }
                            </button>
                            <button 
                              onClick={() => handleCeoAction(item.symbol, 'HOLD', item.type || 'FUT')}
