@@ -7,6 +7,32 @@ export class MstockService {
   private static tokenExpiry: number = 0;
   private static MSTOCK_BASE_URL = "https://tradingapi.mstock.com/v1";
 
+  public static tokenToSymbolMap = new Map<string, string>();
+  public static cachedUserId: string | null = null;
+  public static cachedApiKey: string | null = null;
+  public static cachedAccessToken: string | null = null;
+
+  static getEqTokenOnlySync(symbol: string): string | null {
+     if (!this.scripMasterDataMap) return null;
+     return this.scripMasterDataMap.get(symbol.toUpperCase())?.token || null;
+  }
+  
+  static getFutTokenOnlySync(symbol: string): string | null {
+     if (!this.scripMasterFuturesMap) return null;
+     const futures = this.scripMasterFuturesMap.get(symbol.toUpperCase()) || [];
+     if (futures.length === 0) return null;
+     const sorted = [...futures].sort((a, b) => {
+         const d1 = new Date(a.expiryStr).getTime();
+         const d2 = new Date(b.expiryStr).getTime();
+         return (d1 || Infinity) - (d2 || Infinity);
+     });
+     return sorted[0]?.token || null;
+  }
+
+  static getSymbolFromTokenSync(token: string): string | null {
+     return this.tokenToSymbolMap.get(token) || null;
+  }
+
   static async autoLoginWithTOTP() {
     const apiKey = process.env.MSTOCK_API_KEY;
     const totpSecret = process.env.MSTOCK_TOTP_SECRET;
@@ -70,6 +96,23 @@ export class MstockService {
         console.log("[MSTOCK SERVICE] Authentication Successful! JWT Extracted.");
         this.cachedToken = jwtToken;
         this.tokenExpiry = Date.now() + (6 * 60 * 60 * 1000);  // expire after 6 hours
+
+        // Save for WebSocket
+        this.cachedUserId = response.data?.data?.user_id || "1199015";
+        this.cachedApiKey = response.data?.data?.api_key || apiKey;
+        this.cachedAccessToken = response.data?.data?.access_token || jwtToken;
+
+        // Lazy initialize and connect WebSocket subscription stream
+        import('./mstockSocketService').then(({ MstockSocketService }) => {
+            if (this.cachedUserId && this.cachedAccessToken && this.cachedApiKey) {
+                MstockSocketService.connect(this.cachedUserId, this.cachedAccessToken, this.cachedApiKey).catch(wsErr => {
+                    console.error("[MSTOCK SERVICE] Websocket initial connection error:", wsErr);
+                });
+            }
+        }).catch(wsImportErr => {
+            console.error("[MSTOCK SERVICE] Failed to import MstockSocketService module:", wsImportErr);
+        });
+
         return jwtToken;
       } else {
         throw new Error(`Authentication rejected: ${response.data?.message || "Unknown error"}`);
@@ -116,24 +159,39 @@ export class MstockService {
       const sessionToken = await this.getMstockJwtToken();
       if (!sessionToken) return {};
 
+      // Load streaming state from live web socket cache
+      const { MstockSocketService } = await import('./mstockSocketService');
+      
       const nseTokens: string[] = [];
       const symMap: Record<string, string> = {};
+      const result: Record<string, {price: number, volume: number, prevClose: number}> = {};
 
       for (const rawSym of symbols) {
-         const cleanSym = rawSym.replace(".NS", "").replace(".BO", "");
-         // getSymbolToken is already implemented below in the file
-         const info = await this.getSymbolToken(cleanSym, apiKey, sessionToken);
-         if (info && info.token) {
-             nseTokens.push(info.token);
-             symMap[info.token] = cleanSym;
+         const cleanSym = rawSym.replace(".NS", "").replace(".BO", "").toUpperCase();
+         const eqTokenInfo = this.getEqTokenOnlySync(cleanSym);
+         const cached = MstockSocketService.liveStateMap[cleanSym] || (eqTokenInfo ? MstockSocketService.liveStateMap[eqTokenInfo] : null);
+
+         if (cached && cached.price > 0) {
+            result[cleanSym] = {
+                price: cached.price,
+                volume: cached.volume,
+                prevClose: cached.prevClose
+            };
+         } else {
+             // Fallback to HTTP query
+             const info = await this.getSymbolToken(cleanSym, apiKey, sessionToken);
+             if (info && info.token) {
+                 nseTokens.push(info.token);
+                 symMap[info.token] = cleanSym;
+             }
          }
       }
 
-      if (nseTokens.length === 0) return {};
+      if (nseTokens.length === 0) return result;
 
       const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
       const body = {
-          mode: "FULL",
+          mode: "OHLC",
           exchangeTokens: {
               NSE: nseTokens
           }
@@ -151,9 +209,10 @@ export class MstockService {
           data: body 
       });
 
-      const result: Record<string, {price: number, volume: number, prevClose: number}> = {};
-      
-      if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
+       if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
+          if (response.data.data.fetched.length > 0) {
+              console.log("[MSTOCK DEBUG] FETCHED KEYS:", Object.keys(response.data.data.fetched[0]), "SAMPLE:", JSON.stringify(response.data.data.fetched[0]));
+          }
           for (const item of response.data.data.fetched) {
               const sym = symMap[item.symbolToken];
               if (sym) {
@@ -180,23 +239,41 @@ export class MstockService {
       const sessionToken = await this.getMstockJwtToken();
       if (!sessionToken) return {};
 
+      // Load streaming state from live web socket cache
+      const { MstockSocketService } = await import('./mstockSocketService');
+
       const nfoTokens: string[] = [];
       const symMap: Record<string, string> = {};
+      const result: Record<string, {price: number, volume: number, prevClose: number, lotSize?: number}> = {};
 
       for (const rawSym of symbols) {
-         const cleanSym = rawSym.replace(".NS", "").replace(".BO", "");
-         const info = await this.getFutureSymbolToken(cleanSym, apiKey, sessionToken);
-         if (info && info.token) {
-             nfoTokens.push(info.token);
-             symMap[info.token] = cleanSym;
+         const cleanSym = rawSym.replace(".NS", "").replace(".BO", "").toUpperCase();
+         const futTokenInfo = this.getFutTokenOnlySync(cleanSym);
+         const cached = MstockSocketService.liveStateMap[cleanSym] || (futTokenInfo ? MstockSocketService.liveStateMap[futTokenInfo] : null);
+
+         if (cached && cached.price > 0) {
+            const info = await this.getFutureSymbolToken(cleanSym, apiKey, sessionToken);
+            result[cleanSym] = {
+                price: cached.price,
+                volume: cached.volume,
+                prevClose: cached.prevClose,
+                lotSize: info?.lotSize || 1
+            };
+         } else {
+             // Fallback to HTTP query
+             const info = await this.getFutureSymbolToken(cleanSym, apiKey, sessionToken);
+             if (info && info.token) {
+                 nfoTokens.push(info.token);
+                 symMap[info.token] = cleanSym;
+             }
          }
       }
 
-      if (nfoTokens.length === 0) return {};
+      if (nfoTokens.length === 0) return result;
 
       const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
       const body = {
-          mode: "FULL",
+          mode: "OHLC",
           exchangeTokens: {
               NFO: nfoTokens
           }
@@ -214,9 +291,10 @@ export class MstockService {
           data: body 
       });
 
-      const result: Record<string, {price: number, volume: number, prevClose: number, lotSize?: number}> = {};
-      
       if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
+          if (response.data.data.fetched.length > 0) {
+              console.log("[MSTOCK FUT DEBUG] FETCHED KEYS:", Object.keys(response.data.data.fetched[0]), "SAMPLE:", JSON.stringify(response.data.data.fetched[0]));
+          }
           for (const item of response.data.data.fetched) {
               const sym = symMap[item.symbolToken];
               if (sym) {
@@ -321,6 +399,7 @@ export class MstockService {
       this.scripMasterDataMap = new Map();
       this.scripMasterFuturesMap = new Map();
       this.scripMasterOptionsMap = new Map();
+      this.tokenToSymbolMap = new Map();
       
       const now = Date.now();
 
@@ -331,13 +410,17 @@ export class MstockService {
         const instrType = (item.instrumenttype || '').toUpperCase();
 
         if (exchSeg === 'NSE' && instrType === 'EQ') {
+          const tokenStr = String(item.token);
           this.scripMasterDataMap.set(plainSymbol, {
-            token: String(item.token),
+            token: tokenStr,
             tradingSymbol: String(item.name)
           });
+          this.tokenToSymbolMap.set(tokenStr, plainSymbol);
         }
         
         if (exchSeg === 'NFO' && instrType === 'FUTSTK') {
+           const tokenStr = String(item.token);
+           this.tokenToSymbolMap.set(tokenStr, plainSymbol);
            const expiryStr = String(item.expiry || '');
            const expDate = new Date(expiryStr).getTime();
            if (!isNaN(expDate) && expDate > now - 86400000) {
@@ -345,7 +428,7 @@ export class MstockService {
                    this.scripMasterFuturesMap.set(plainSymbol, []);
                }
                this.scripMasterFuturesMap.get(plainSymbol)!.push({
-                   token: String(item.token),
+                   token: tokenStr,
                    tradingSymbol: String(item.name),
                    expiryStr,
                    lotSize: Number(item.lotsize) || 1
@@ -354,6 +437,8 @@ export class MstockService {
         }
 
         if (exchSeg === 'NFO' && instrType === 'OPTSTK') {
+           const tokenStr = String(item.token);
+           this.tokenToSymbolMap.set(tokenStr, plainSymbol);
            const expiryStr = String(item.expiry || '');
            const expDate = new Date(expiryStr).getTime();
            if (!isNaN(expDate) && expDate > now - 86400000) {
@@ -368,7 +453,7 @@ export class MstockService {
                const parsedStrike = Number.parseFloat(String(item.strike || item.strikeprice));
 
                this.scripMasterOptionsMap.get(plainSymbol)!.push({
-                   token: String(item.token),
+                   token: tokenStr,
                    tradingSymbol: String(item.name),
                    expiryStr,
                    lotSize: Number(item.lotsize) || 1,
