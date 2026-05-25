@@ -29,6 +29,7 @@ export class ScanEngine {
   public static currentScanScope: ScanResult[] = [];
   public static ceoDeskItems: ScanResult[] = [];
   public static cancelledItems: Set<string> = new Set();
+  public static autoExecutedItems: Set<string> = new Set();
   public static recentMTFBuys: Record<string, number> = {};
   
   // Approximate Lot Sizes for well known stocks (Fallback proxy)
@@ -77,10 +78,11 @@ export class ScanEngine {
          const ltp = future && future.price > 0 ? future.price : live.price;
          const spotPrice = live.price;
          const latestVolume = live.volume;
-         const futPrevClose = future && future.prevClose > 0 ? future.prevClose : live.prevClose;
          
-         // Calculate change based on LTP vs Yesterday's close
-         const changePct = futPrevClose > 0 ? ((ltp - futPrevClose) / futPrevClose) * 100 : 0;
+         // Fix: Change percentage strictly calculated on the spot price
+         const spotPrevClose = live.prevClose;
+         const changePct = spotPrevClose > 0 ? ((spotPrice - spotPrevClose) / spotPrevClose) * 100 : 0;
+         
          const volMultiplier = cached.avgVol90d > 0 ? (latestVolume / cached.avgVol90d) : 0;
          
          const isCrossHigh = spotPrice > cached.high90d;
@@ -118,7 +120,17 @@ export class ScanEngine {
                isCeoDesk: true, changePct, volMultiplier, type: 'OPTIONS', recommendedOption: optionAction, mtfMargin
             };
             results.push(optionsItem);
-            if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'OPTIONS')) newCeoItems.push(optionsItem);
+            
+            const execKey = `${plainSymbol}_OPTIONS`;
+            if (!this.autoExecutedItems.has(execKey) && !this.cancelledItems.has(plainSymbol)) {
+                this.autoExecutedItems.add(execKey);
+                // Push to desk temporarily so actionCeoItem can find it
+                this.ceoDeskItems.push(optionsItem);
+                this.actionCeoItem(plainSymbol, 'BUY', 'OPTIONS').catch(e => console.error(e));
+            } else if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'OPTIONS')) {
+                // Keep it in the CEO desk for visibility even if already executed or cancelled
+                newCeoItems.push(optionsItem);
+            }
          }
 
          // --- MTF ---
@@ -147,7 +159,16 @@ export class ScanEngine {
                 isCeoDesk: true, changePct, volMultiplier, type: 'INTRADAY', recommendedAction: intradayAction, mtfMargin
              };
              results.push(intradayItem);
-             if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'INTRADAY')) newCeoItems.push(intradayItem);
+             
+             const execKey = `${plainSymbol}_INTRADAY`;
+             if (!this.autoExecutedItems.has(execKey) && !this.cancelledItems.has(plainSymbol)) {
+                 this.autoExecutedItems.add(execKey);
+                 // Push to desk temporarily so actionCeoItem can find it
+                 this.ceoDeskItems.push(intradayItem);
+                 this.actionCeoItem(plainSymbol, 'BUY', 'INTRADAY').catch(e => console.error(e));
+             } else if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'INTRADAY')) {
+                 newCeoItems.push(intradayItem);
+             }
          }
        }
     }
@@ -177,7 +198,7 @@ export class ScanEngine {
 
       if (action === 'BUY') { // 'BUY' here means EXECUTE signal
          const direction = item.recommendedAction === 'SELL' ? 'SELL' : 'BUY';
-         const orderPrice = direction === 'BUY' ? item.ltp * 0.995 : item.ltp * 1.005;
+         const orderPrice = item.ltp;
          
          try {
              if (type === 'OPTIONS') {
