@@ -52,7 +52,7 @@ export class DataKeeper {
         const symbol = targetSymbols[i];
         
         const existing = this.cache![symbol];
-        if (existing && (Date.now() - existing.lastUpdated < TWELVE_HOURS)) {
+        if (existing && existing.low180d !== undefined && existing.low180d > 0 && (Date.now() - existing.lastUpdated < TWELVE_HOURS)) {
           continue; // Skips instantly, zero memory overhead
         }
 

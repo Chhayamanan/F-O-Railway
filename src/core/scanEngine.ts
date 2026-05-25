@@ -89,6 +89,10 @@ export class ScanEngine {
          const rangePct = cached.low180d && cached.low180d > 0 ? (cached.high180d - cached.low180d) / cached.low180d : 0;
          const isRangeOk = rangePct > 0 && rangePct <= 0.80;
          
+         if (results.length < 5 && Math.random() < 0.1) {
+            console.log(`[SCAN DIAGNOSTIC] ${plainSymbol}: ltp=${spotPrice}, high180d=${cached.high180d}, low180d=${cached.low180d}, rangePct=${rangePct.toFixed(4)}, isRangeOk=${isRangeOk}`);
+         }
+         
          if (isRangeOk) {
             const radarItem: ScanResult = {
                symbol: plainSymbol, ltp, spotPrice, latestVolume, high180d: cached.high180d, low180d: cached.low180d, avgVol180d: cached.avgVol180d,
