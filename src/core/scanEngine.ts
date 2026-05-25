@@ -87,7 +87,7 @@ export class ScanEngine {
          
          const isCrossHigh = spotPrice > cached.high180d;
          const rangePct = cached.low180d && cached.low180d > 0 ? (cached.high180d - cached.low180d) / cached.low180d : 0;
-         const isRangeOk = rangePct > 0 && rangePct <= 0.30;
+         const isRangeOk = rangePct > 0 && rangePct <= 0.40;
          
          if (isRangeOk) {
             const radarItem: ScanResult = {
@@ -98,7 +98,7 @@ export class ScanEngine {
          }
          
          const lotSize = future?.lotSize || this.MOCK_LOT_SIZES[plainSymbol] || 500;
-         const contractValue = ltp * lotSize;
+         const contractValue = spotPrice * lotSize;
          const riskValue = contractValue * 0.05; // 5% stop loss risk
          const mtfMargin = MTF_MARGINS[plainSymbol];
 
