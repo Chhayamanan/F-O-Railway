@@ -1,6 +1,5 @@
 import WebSocket from 'ws';
 import { RAW_UNIVERSE } from './marketDataService';
-import { MstockService } from './mstockService';
 
 export interface LiveFeedSnapshot {
   price: number;
@@ -11,104 +10,82 @@ export interface LiveFeedSnapshot {
 
 export class MstockSocketService {
   private static ws: WebSocket | null = null;
-  // Fast local memory cache map for real-time tick values
   public static liveStateMap: Record<string, LiveFeedSnapshot> = {};
-  public static isConnected = false;
+  private static isConnected = false;
 
   static async connect(userId: string, accessToken: string, apiKey: string) {
     if (this.isConnected) return;
 
-    // Production m.Stock stream gateway address
-    const socketUrl = `wss://ws.mstock.trade?API_KEY=${encodeURIComponent(apiKey)}&ACCESS_TOKEN=${encodeURIComponent(accessToken)}`;
+    // 1. STRICT KEY ENCODING: Guard against base64 symbol corruptions (+, =, /)
+    const encodedKey = encodeURIComponent(apiKey);
+    const encodedToken = encodeURIComponent(accessToken);
     
-    console.log('[MSTOCK WEBSOCKET] Connecting to stream:', `wss://ws.mstock.trade?API_KEY=***&ACCESS_TOKEN=***`);
-    this.ws = new WebSocket(socketUrl);
+    // Explicit production streaming connection gateway
+    const socketUrl = `wss://ws.mstock.trade?API_KEY=${encodedKey}&ACCESS_TOKEN=${encodedToken}`;
+    
+    console.log('[MSTOCK WEBSOCKET] Initiating secure gateway handshake...');
+
+    // 2. Add custom connection configuration blocks to satisfy firewall fingerprints
+    this.ws = new WebSocket(socketUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Node.js)',
+        'X-Mirae-Version': '1'
+      }
+    });
 
     this.ws.on('open', () => {
-      console.log('[MSTOCK WEBSOCKET] Secure streaming pipe opened successfully.');
+      console.log('[MSTOCK WEBSOCKET] TCP Pipe established. Confirming authentication...');
       this.isConnected = true;
 
-      // 1. Subscribe to the universe tokens
-      // Note: Map your RAW_UNIVERSE string names to the broker's specific exchange token ids
-      const subscriptionTokens: string[] = [];
+      // 3. MANDATORY CORE PROTOCOL: Transmit explicit post-connection login frame
+      this.ws?.send(`LOGIN:${accessToken}`);
 
-      // Add plain symbols
-      RAW_UNIVERSE.forEach(sym => {
-          const clean = sym.replace('.NS', '').replace('.BO', '');
-          subscriptionTokens.push(clean);
-      });
-
-      // Add actual indexed exchange token ID strings for BOTH Equity and Futures
-      RAW_UNIVERSE.forEach(sym => {
-          const cleanSym = sym.replace('.NS', '').replace('.BO', '');
-          const eqToken = MstockService.getEqTokenOnlySync(cleanSym);
-          if (eqToken) {
-              subscriptionTokens.push(eqToken);
-          }
-          const futToken = MstockService.getFutTokenOnlySync(cleanSym);
-          if (futToken) {
-              subscriptionTokens.push(futToken);
-          }
-      });
-
-      console.log(`[MSTOCK WEBSOCKET] Sending subscription request for ${subscriptionTokens.length} tokens/symbols...`);
+      // 4. Subscribe to targets (Ensure arrays pass clean exchange tokens)
+      const cleanSymbols = RAW_UNIVERSE.map(sym => sym.replace('.NS', ''));
       const subscriptionPayload = {
         a: "subscribe",
-        v: subscriptionTokens
+        v: cleanSymbols
       };
       this.ws?.send(JSON.stringify(subscriptionPayload));
 
-      // 2. FORCE FULL MODE STREAM (Streams Live Volumes, Prices, and VTT bytes)
+      // Set target mode explicitly
       const modePayload = {
         a: "mode",
         v: ["full"]
       };
       this.ws?.send(JSON.stringify(modePayload));
-      console.log('[MSTOCK WEBSOCKET] Subscribed to Full Token Streaming Matrix.');
+      console.log(`[MSTOCK WEBSOCKET] Streaming matrices activated for ${cleanSymbols.length} core assets.`);
     });
 
     this.ws.on('message', (rawData: WebSocket.Data) => {
       try {
         const packet = JSON.parse(rawData.toString());
         
-        // Map the incoming binary JSON parameters safely to your live state cache
-        if (packet && (packet.symbol || packet.symbolToken || packet.token)) {
-          const rawSym = packet.symbol || packet.symbolToken || packet.token;
-          let symKey = String(rawSym).toUpperCase();
-
-          // Try resolving mapping if it's a numeric exchange token mapping
-          const mappedSym = MstockService.getSymbolFromTokenSync(symKey);
-          if (mappedSym) {
-              symKey = mappedSym;
-          }
-
-          const priceVal = Number(packet.ltp || packet.p || 0);
-          const volVal = Number(packet.vtt || packet.v || packet.volume || 0);
-          const prevCloseVal = Number(packet.c || packet.prevClose || 0);
-
-          // Update cache map
-          // Do not write zeroes if we already have non-zero cached entries (preserves state)
-          const existing = this.liveStateMap[symKey];
+        // Parse the official exchange packet parameters seamlessly
+        if (packet && packet.symbol) {
+          const symKey = packet.symbol;
           this.liveStateMap[symKey] = {
-            price: priceVal > 0 ? priceVal : (existing?.price || 0),
-            volume: volVal > 0 ? volVal : (existing?.volume || 0),
-            prevClose: prevCloseVal > 0 ? prevCloseVal : (existing?.prevClose || 0),
+            price: Number(packet.ltp || packet.p || 0),
+            // m.Stock tracks live exchange volume cumulative bytes under 'vtt' or 'v'
+            volume: Number(packet.vtt || packet.v || packet.volume || 0),
+            prevClose: Number(packet.c || packet.prevClose || 0),
             timestamp: Date.now()
           };
         }
       } catch (err) {
-        // Suppress parsing noise from streaming heartbeats
+        // Keeps the socket silent during periodic gateway heartbeat pings
       }
     });
 
-    this.ws.on('close', () => {
-      console.warn('[MSTOCK WEBSOCKET] Stream disconnected. Re-connecting in 5 seconds...');
+    this.ws.on('close', (code, reason) => {
+      console.warn(`[MSTOCK WEBSOCKET] Stream closed [Code: ${code}]. Reason: ${reason ? reason.toString() : 'None'}`);
       this.isConnected = false;
+      // Linear backoff delay strategy to keep connection loop healthy
       setTimeout(() => this.connect(userId, accessToken, apiKey), 5000);
     });
 
-    this.ws.on('error', (err: any) => {
-      console.error('[MSTOCK WEBSOCKET] Network stream anomaly:', err.message || err);
+    this.ws.on('error', (err) => {
+      console.error('[MSTOCK WEBSOCKET] Connection exception:', err.message);
     });
   }
 }
