@@ -39,7 +39,8 @@ export class DataKeeper {
     if (!this.cache) await this.init();
 
     // 1. Transform clean names into explicit Yahoo Tickers (appending .NS)
-    const targetSymbols = RAW_UNIVERSE.map(symbol => 
+    const uniqueUniverse = Array.from(new Set(RAW_UNIVERSE));
+    const targetSymbols = uniqueUniverse.map(symbol => 
       symbol.endsWith('.NS') || symbol.startsWith('^') || symbol.endsWith('.BO') ? symbol : `${symbol}.NS`
     );
 
@@ -53,6 +54,14 @@ export class DataKeeper {
       
       await Promise.all(chunk.map(async (symbol) => {
         try {
+          const cachedEntry = this.cache![symbol];
+          if (cachedEntry && cachedEntry.lastUpdated) {
+            const ageMs = Date.now() - cachedEntry.lastUpdated;
+            if (ageMs < 12 * 60 * 60 * 1000) {
+              return; // Skip, already recently fetched
+            }
+          }
+
           const data = await YahooService.get90DayData(symbol);
           
           if (data && data.length > 0) {
