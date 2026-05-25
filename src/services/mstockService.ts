@@ -133,7 +133,7 @@ export class MstockService {
 
       const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
       const body = {
-          mode: "OHLC",
+          mode: "FULL",
           exchangeTokens: {
               NSE: nseTokens
           }
@@ -167,7 +167,7 @@ export class MstockService {
       }
       return result;
     } catch (e: any) {
-      console.error("[MSTOCK] Error fetching live quotes:", e.message);
+      console.error("[MSTOCK] Error fetching live quotes:", e.response?.data || e.message);
       return {};
     }
   }
@@ -196,7 +196,7 @@ export class MstockService {
 
       const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
       const body = {
-          mode: "OHLC",
+          mode: "FULL",
           exchangeTokens: {
               NFO: nfoTokens
           }

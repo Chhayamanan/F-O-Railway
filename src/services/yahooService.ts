@@ -54,4 +54,28 @@ export class YahooService {
       return [];
     }
   }
+
+  static async getCurrentPrices(symbols: string[]) {
+    const result: Record<string, {price: number, volume: number, prevClose: number}> = {};
+    if (symbols.length === 0) return result;
+    
+    // Yahoo quote API supports up to a reasonable chunk size, so we'll fetch them
+    const formattedSymbols = symbols.map(s => (s.includes(".") || s.startsWith("^")) ? s : `${s}.NS`);
+    
+    try {
+       const quotes = await yahooFinance.quote(formattedSymbols);
+       for (const item of quotes as any[]) {
+           const plainSymbol = item.symbol.replace('.NS', '').replace('.BO', '');
+           result[plainSymbol] = {
+               price: item.regularMarketPrice || item.postMarketPrice || item.price || 0,
+               volume: item.regularMarketVolume || item.volume || 0,
+               prevClose: item.regularMarketPreviousClose || item.previousClose || 0
+           };
+       }
+       return result;
+    } catch (e: any) {
+        console.error("[YAHOO] Error fetching current prices:", e.message);
+        return result;
+    }
+  }
 }

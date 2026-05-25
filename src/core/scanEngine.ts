@@ -60,7 +60,7 @@ export class ScanEngine {
        const chunk = universe.slice(i, i + CHUNK_SIZE);
        
        // live quote from Mstock
-       const liveData = await MstockService.getCurrentPrices(chunk);
+       let liveData = await MstockService.getCurrentPrices(chunk);
        const futureData = await MstockService.getCurrentFuturePrices(chunk);
        
        for (const symbol of chunk) {
@@ -86,12 +86,11 @@ export class ScanEngine {
          const volMultiplier = cached.avgVol180d > 0 ? (latestVolume / cached.avgVol180d) : 0;
          
          const isCrossHigh = spotPrice > cached.high180d;
-         const rangePct = cached.low180d && cached.low180d > 0 ? (cached.high180d - cached.low180d) / cached.low180d : 0;
-         const isRangeOk = rangePct > 0 && rangePct <= 0.80;
+         if (!cached.high180d || !cached.low180d) continue; // Skip missing data
+         const rangePct = cached.low180d > 0 ? (cached.high180d - cached.low180d) / cached.low180d : 0;
+         if (Number.isNaN(rangePct)) continue; // Skip nan values
          
-         if (results.length < 5 && Math.random() < 0.1) {
-            console.log(`[SCAN DIAGNOSTIC] ${plainSymbol}: ltp=${spotPrice}, high180d=${cached.high180d}, low180d=${cached.low180d}, rangePct=${rangePct.toFixed(4)}, isRangeOk=${isRangeOk}`);
-         }
+         const isRangeOk = rangePct > 0 && rangePct <= 0.80;
          
          if (isRangeOk) {
             const radarItem: ScanResult = {
