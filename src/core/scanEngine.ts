@@ -7,16 +7,16 @@ export interface ScanResult {
   ltp: number;
   spotPrice?: number;
   latestVolume: number;
-  high90d: number;
-  low90d?: number;
-  avgVol90d: number;
+  high180d: number;
+  low180d?: number;
+  avgVol180d: number;
   isCeoDesk: boolean;
   contractValue?: number;
   riskValue?: number;
   lotSize?: number;
   changePct?: number;
   volMultiplier?: number;
-  type?: 'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY';
+  type?: 'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY' | 'RADAR';
   recommendedOption?: 'CALL' | 'PUT';
   recommendedAction?: 'BUY' | 'SELL';
   mtfMargin?: number;
@@ -83,11 +83,19 @@ export class ScanEngine {
          const spotPrevClose = live.prevClose;
          const changePct = spotPrevClose > 0 ? ((spotPrice - spotPrevClose) / spotPrevClose) * 100 : 0;
          
-         const volMultiplier = cached.avgVol90d > 0 ? (latestVolume / cached.avgVol90d) : 0;
+         const volMultiplier = cached.avgVol180d > 0 ? (latestVolume / cached.avgVol180d) : 0;
          
-         const isCrossHigh = spotPrice > cached.high90d;
-         const rangePct = cached.low90d && cached.low90d > 0 ? (cached.high90d - cached.low90d) / cached.low90d : 0;
+         const isCrossHigh = spotPrice > cached.high180d;
+         const rangePct = cached.low180d && cached.low180d > 0 ? (cached.high180d - cached.low180d) / cached.low180d : 0;
          const isRangeOk = rangePct > 0 && rangePct <= 0.30;
+         
+         if (isRangeOk) {
+            const radarItem: ScanResult = {
+               symbol: plainSymbol, ltp, spotPrice, latestVolume, high180d: cached.high180d, low180d: cached.low180d, avgVol180d: cached.avgVol180d,
+               isCeoDesk: false, changePct, volMultiplier, type: 'RADAR', mtfMargin: MTF_MARGINS[plainSymbol]
+            };
+            results.push(radarItem);
+         }
          
          const lotSize = future?.lotSize || this.MOCK_LOT_SIZES[plainSymbol] || 500;
          const contractValue = ltp * lotSize;
@@ -101,7 +109,7 @@ export class ScanEngine {
          const isFutScanScope = isRangeOk && isCrossHigh && volMultiplier >= futVolMult;
          if (isFutScanScope) {
             const item: ScanResult = {
-               symbol: plainSymbol, ltp, spotPrice, latestVolume, high90d: cached.high90d, low90d: cached.low90d, avgVol90d: cached.avgVol90d,
+               symbol: plainSymbol, ltp, spotPrice, latestVolume, high180d: cached.high180d, low180d: cached.low180d, avgVol180d: cached.avgVol180d,
                isCeoDesk: true, contractValue, riskValue, lotSize, changePct, volMultiplier, type: 'FUT', mtfMargin
             };
             results.push(item);
@@ -116,7 +124,7 @@ export class ScanEngine {
          if (isOptionsEligible) {
             const optionAction = changePct >= 0 ? 'CALL' : 'PUT';
             const optionsItem: ScanResult = {
-               symbol: plainSymbol, ltp, spotPrice, latestVolume, high90d: cached.high90d, low90d: cached.low90d, avgVol90d: cached.avgVol90d,
+               symbol: plainSymbol, ltp, spotPrice, latestVolume, high180d: cached.high180d, low180d: cached.low180d, avgVol180d: cached.avgVol180d,
                isCeoDesk: true, changePct, volMultiplier, type: 'OPTIONS', recommendedOption: optionAction, mtfMargin
             };
             results.push(optionsItem);
@@ -131,7 +139,7 @@ export class ScanEngine {
          const isMtfScanScope = isRangeOk && isCrossHigh && volMultiplier >= mtfVolMult;
          if (isMtfEligible && isMtfScanScope) {
              const mtfItem: ScanResult = {
-                symbol: plainSymbol, ltp: spotPrice, spotPrice, latestVolume, high90d: cached.high90d, low90d: cached.low90d, avgVol90d: cached.avgVol90d,
+                symbol: plainSymbol, ltp: spotPrice, spotPrice, latestVolume, high180d: cached.high180d, low180d: cached.low180d, avgVol180d: cached.avgVol180d,
                 isCeoDesk: true, changePct, volMultiplier, type: 'MTF', mtfMargin
              };
              results.push(mtfItem);
@@ -145,7 +153,7 @@ export class ScanEngine {
          if (isIntradayScanScope) {
              const intradayAction = changePct >= 0 ? 'BUY' : 'SELL';
              const intradayItem: ScanResult = {
-                symbol: plainSymbol, ltp: spotPrice, spotPrice, latestVolume, high90d: cached.high90d, low90d: cached.low90d, avgVol90d: cached.avgVol90d,
+                symbol: plainSymbol, ltp: spotPrice, spotPrice, latestVolume, high180d: cached.high180d, low180d: cached.low180d, avgVol180d: cached.avgVol180d,
                 isCeoDesk: true, changePct, volMultiplier, type: 'INTRADAY', recommendedAction: intradayAction, mtfMargin
              };
              results.push(intradayItem);

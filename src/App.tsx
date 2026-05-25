@@ -5,8 +5,8 @@ interface ScanResult {
   symbol: string;
   ltp: number;
   latestVolume: number;
-  high90d: number;
-  avgVol90d: number;
+  high180d: number;
+  avgVol180d: number;
   isCeoDesk: boolean;
   contractValue?: number;
   riskValue?: number;
@@ -26,7 +26,7 @@ function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [actionLogs, setActionLogs] = useState<string[]>([]);
   const [isAutoScanning, setIsAutoScanning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY' | 'STOP_LOSS'>('FUT');
+  const [activeTab, setActiveTab] = useState<'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY' | 'STOP_LOSS' | 'RADAR'>('FUT');
   const [futHighDistance, setFutHighDistance] = useState<number>(0.98);
   const [futBaseVolMultiplier, setFutBaseVolMultiplier] = useState<number>(2.0);
   const [optHighDistance, setOptHighDistance] = useState<number>(0.98);
@@ -45,10 +45,10 @@ function App() {
     } catch {}
   };
 
-  const start90dSync = async () => {
+  const start180dSync = async () => {
     try {
-      await fetch('/api/scan/sync-90d', { method: 'POST' });
-      addLog("Initiated 90-day data sync (Background task).");
+      await fetch('/api/scan/sync-180d', { method: 'POST' });
+      addLog("Initiated 180-day data sync (Background task).");
     } catch {}
   };
 
@@ -170,9 +170,10 @@ function App() {
   }, [activeTab]);
 
   const filteredCeoDesk = ceoDesk.filter(x => {
-    return x.type === activeTab || (!x.type && activeTab === 'FUT');
+    return activeTab === 'RADAR' ? false : (x.type === activeTab || (!x.type && activeTab === 'FUT'));
   });
   const filteredScanScope = scanScope.filter(x => {
+    if (activeTab === 'RADAR') return x.type === 'RADAR';
     return x.type === activeTab || (!x.type && activeTab === 'FUT');
   });
 
@@ -192,9 +193,9 @@ function App() {
           
           <div className="flex gap-4">
              <div className="bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-lg flex items-center gap-3">
-                <span className="text-sm text-zinc-400">90D Data Keeper:</span>
+                <span className="text-sm text-zinc-400">180D Data Keeper:</span>
                 <span className="text-emerald-400 font-mono">{syncedCount} Stocks</span>
-                <button onClick={start90dSync} title="Sync 90D Data" className="text-zinc-500 hover:text-white transition-colors">
+                <button onClick={start180dSync} title="Sync 180D Data" className="text-zinc-500 hover:text-white transition-colors">
                   <RefreshCw size={16} />
                 </button>
              </div>
@@ -238,6 +239,12 @@ function App() {
             className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'INTRADAY' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
           >
             Intraday
+          </button>
+          <button 
+            onClick={() => setActiveTab('RADAR')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'RADAR' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            Radar
           </button>
           <button 
             onClick={() => setActiveTab('STOP_LOSS')}
@@ -393,9 +400,9 @@ function App() {
                              )}
                            </div>
                            <div className="text-sm text-zinc-400 grid grid-cols-2 gap-x-6 gap-y-1">
-                              <div>90D High: <span className="text-white">₹{item.high90d.toFixed(2)}</span> {item.type !== 'OPTIONS' && item.type !== 'INTRADAY' ? <span className="text-xs text-zinc-500 ml-1">(Range: {item.low90d && item.low90d > 0 ? ((item.high90d - item.low90d) / item.low90d * 100).toFixed(1) : 0}%)</span> : null}</div>
+                              <div>180D High: <span className="text-white">₹{item.high180d.toFixed(2)}</span> {item.type !== 'OPTIONS' && item.type !== 'INTRADAY' ? <span className="text-xs text-zinc-500 ml-1">(Range: {item.low180d && item.low180d > 0 ? ((item.high180d - item.low180d) / item.low180d * 100).toFixed(1) : 0}%)</span> : null}</div>
                               <div className="flex items-center gap-2">
-                                Volume: <span className="text-white">{(item.latestVolume/1000).toFixed(1)}k</span> <span className="text-xs text-zinc-500">(Avg: {(item.avgVol90d/1000).toFixed(1)}k)</span>
+                                Volume: <span className="text-white">{(item.latestVolume/1000).toFixed(1)}k</span> <span className="text-xs text-zinc-500">(Avg: {(item.avgVol180d/1000).toFixed(1)}k)</span>
                                 {item.volMultiplier !== undefined && (
                                    <span className="text-amber-400 bg-amber-900/30 px-1.5 rounded text-xs ml-1">{item.volMultiplier.toFixed(1)}x</span>
                                 )}
@@ -457,7 +464,7 @@ function App() {
                  <div className="p-4 border-b border-zinc-800 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
                     <div className="flex items-center gap-3">
                        <Search className="text-zinc-400" />
-                       <h2 className="text-lg font-medium">Scan Scope (Radar)</h2>
+                       <h2 className="text-lg font-medium">{activeTab === 'RADAR' ? 'Scan Scope (Radar)' : `Scan Scope (${activeTab})`}</h2>
                     </div>
                     <div className="flex items-center gap-4 flex-wrap justify-end">
                     </div>
@@ -469,9 +476,9 @@ function App() {
                           <tr>
                              <th className="font-medium p-4">Symbol</th>
                              <th className="font-medium p-4">LTP</th>
-                             <th className="font-medium p-4">90D High</th>
+                             <th className="font-medium p-4">180D High</th>
                              <th className="font-medium p-4">Curr Vol</th>
-                             <th className="font-medium p-4">90D Avg Vol</th>
+                             <th className="font-medium p-4">180D Avg Vol</th>
                              <th className="font-medium p-4">Status</th>
                           </tr>
                        </thead>
@@ -501,14 +508,14 @@ function App() {
                                     </span>
                                   )}
                                 </td>
-                                <td className="p-4 font-mono text-zinc-500">₹{item.high90d.toFixed(2)}</td>
-                                <td className={`p-4 font-mono ${item.latestVolume >= 2 * item.avgVol90d ? 'text-amber-400' : 'text-zinc-500'}`}>
+                                <td className="p-4 font-mono text-zinc-500">₹{item.high180d.toFixed(2)}</td>
+                                <td className={`p-4 font-mono ${item.latestVolume >= 2 * item.avgVol180d ? 'text-amber-400' : 'text-zinc-500'}`}>
                                   {(item.latestVolume).toLocaleString()}
                                   {item.volMultiplier !== undefined && (
                                      <span className="block text-[10px] text-amber-500">{item.volMultiplier.toFixed(1)}x avg</span>
                                   )}
                                 </td>
-                                <td className="p-4 font-mono text-zinc-500">{(item.avgVol90d).toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+                                <td className="p-4 font-mono text-zinc-500">{(item.avgVol180d).toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
                                 <td className="p-4">
                                   {item.isCeoDesk ? (
                                     <span className="text-xs bg-emerald-950 text-emerald-400 border border-emerald-900 px-2 py-1 rounded">CEO DESK</span>

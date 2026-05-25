@@ -6,9 +6,9 @@ import { RAW_UNIVERSE } from '../services/marketDataService';
 const CACHE_FILE = path.join(process.cwd(), 'market_cache.json');
 
 export interface CachedStockData {
-  high90d: number;
-  low90d: number;
-  avgVol90d: number;
+  high180d: number;
+  low180d: number;
+  avgVol180d: number;
   lastUpdated: number;
 }
 
@@ -57,7 +57,7 @@ export class DataKeeper {
         }
 
         try {
-          const data = await YahooService.get90DayData(symbol);
+          const data = await YahooService.get180DayData(symbol);
           
           if (data && data.length > 0) {
             let maxHigh = 0;
@@ -75,9 +75,9 @@ export class DataKeeper {
             }
             
             this.cache![symbol] = {
-              high90d: maxHigh,
-              low90d: minLow === Infinity ? 0 : minLow,
-              avgVol90d: validDays > 0 ? totalVol / validDays : 0,
+              high180d: maxHigh,
+              low180d: minLow === Infinity ? 0 : minLow,
+              avgVol180d: validDays > 0 ? totalVol / validDays : 0,
               lastUpdated: Date.now()
             };
           }

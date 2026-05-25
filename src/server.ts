@@ -20,7 +20,7 @@ async function startServer() {
   await DataKeeper.init();
 
   // ======== SCAN ENGINE API ========
-  app.post("/api/scan/sync-90d", async (req, res) => {
+  app.post("/api/scan/sync-180d", async (req, res) => {
     try {
       // Async background sync
       DataKeeper.syncAllStocks().catch(console.error);

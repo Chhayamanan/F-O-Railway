@@ -24,10 +24,10 @@ export class YahooService {
     }
   }
 
-  static async get90DayData(symbol: string) {
+  static async get180DayData(symbol: string) {
     const ticker = (symbol.includes(".") || symbol.startsWith("^")) ? symbol : `${symbol}.NS`;
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 90);
+    startDate.setDate(startDate.getDate() - 180);
     const today = new Date();
     
     const queryOptions = {
