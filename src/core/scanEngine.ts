@@ -120,17 +120,7 @@ export class ScanEngine {
                isCeoDesk: true, changePct, volMultiplier, type: 'OPTIONS', recommendedOption: optionAction, mtfMargin
             };
             results.push(optionsItem);
-            
-            const execKey = `${plainSymbol}_OPTIONS`;
-            if (!this.autoExecutedItems.has(execKey) && !this.cancelledItems.has(plainSymbol)) {
-                this.autoExecutedItems.add(execKey);
-                // Push to desk temporarily so actionCeoItem can find it
-                this.ceoDeskItems.push(optionsItem);
-                this.actionCeoItem(plainSymbol, 'BUY', 'OPTIONS').catch(e => console.error(e));
-            } else if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'OPTIONS')) {
-                // Keep it in the CEO desk for visibility even if already executed or cancelled
-                newCeoItems.push(optionsItem);
-            }
+            if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'OPTIONS')) newCeoItems.push(optionsItem);
          }
 
          // --- MTF ---
@@ -159,16 +149,7 @@ export class ScanEngine {
                 isCeoDesk: true, changePct, volMultiplier, type: 'INTRADAY', recommendedAction: intradayAction, mtfMargin
              };
              results.push(intradayItem);
-             
-             const execKey = `${plainSymbol}_INTRADAY`;
-             if (!this.autoExecutedItems.has(execKey) && !this.cancelledItems.has(plainSymbol)) {
-                 this.autoExecutedItems.add(execKey);
-                 // Push to desk temporarily so actionCeoItem can find it
-                 this.ceoDeskItems.push(intradayItem);
-                 this.actionCeoItem(plainSymbol, 'BUY', 'INTRADAY').catch(e => console.error(e));
-             } else if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'INTRADAY')) {
-                 newCeoItems.push(intradayItem);
-             }
+             if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'INTRADAY')) newCeoItems.push(intradayItem);
          }
        }
     }
