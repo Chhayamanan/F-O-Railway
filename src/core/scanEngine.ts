@@ -90,7 +90,7 @@ export class ScanEngine {
          const rangePct = cached.low180d > 0 ? (cached.high180d - cached.low180d) / cached.low180d : 0;
          if (Number.isNaN(rangePct)) continue; // Skip nan values
          
-         const isRangeOk = rangePct > 0 && rangePct <= 0.80;
+         const isRangeOk = rangePct > 0 && rangePct <= 0.30;
          
          if (isRangeOk) {
             const radarItem: ScanResult = {
