@@ -82,7 +82,7 @@ export class ScanEngine {
          
          // Separate criteria for Futures and Options
          const isFutScanScope = (spotPrice >= futHighDist * cached.high90d) || (volMultiplier >= futVolMult) || isCrossHigh;
-         const isOptScanScope = (spotPrice >= optHighDist * cached.high90d) || (volMultiplier >= optVolMult) || isCrossHigh;
+         const isOptScanScope = (volMultiplier >= optVolMult);
          
          const isOptionsEligible = FNO_STOCKS.includes(plainSymbol) && isOptScanScope;
          // Compare current day's change

@@ -254,25 +254,27 @@ function App() {
                <span className="text-sm font-medium text-emerald-400 mr-2">{activeTab} Scanning Config:</span>
                {(activeTab === 'FUT' || activeTab === 'OPTIONS' || activeTab === 'MTF' || activeTab === 'INTRADAY') && (
                  <>
-                   <div className="flex items-center gap-2 border-l border-zinc-700 pl-4">
-                     <label className="text-xs text-zinc-400 whitespace-nowrap">High Dist (cross):</label>
-                     <input 
-                       type="number" step="0.01" min="0.8" max="1.5" 
-                       value={
-                         activeTab === 'FUT' ? futHighDistance :
-                         activeTab === 'OPTIONS' ? optHighDistance :
-                         activeTab === 'MTF' ? mtfHighDistance : intradayHighDistance
-                       } 
-                       onChange={(e) => {
-                         const val = Number(e.target.value);
-                         if (activeTab === 'FUT') setFutHighDistance(val);
-                         else if (activeTab === 'OPTIONS') setOptHighDistance(val);
-                         else if (activeTab === 'MTF') setMtfHighDistance(val);
-                         else setIntradayHighDistance(val);
-                       }}
-                       className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
-                     />
-                   </div>
+                   {activeTab !== 'OPTIONS' && (
+                     <div className="flex items-center gap-2 border-l border-zinc-700 pl-4">
+                       <label className="text-xs text-zinc-400 whitespace-nowrap">High Dist (cross):</label>
+                       <input 
+                         type="number" step="0.01" min="0.8" max="1.5" 
+                         value={
+                           activeTab === 'FUT' ? futHighDistance :
+                           activeTab === 'OPTIONS' ? optHighDistance :
+                           activeTab === 'MTF' ? mtfHighDistance : intradayHighDistance
+                         } 
+                         onChange={(e) => {
+                           const val = Number(e.target.value);
+                           if (activeTab === 'FUT') setFutHighDistance(val);
+                           else if (activeTab === 'OPTIONS') setOptHighDistance(val);
+                           else if (activeTab === 'MTF') setMtfHighDistance(val);
+                           else setIntradayHighDistance(val);
+                         }}
+                         className="w-16 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+                       />
+                     </div>
+                   )}
                    <div className="flex items-center gap-2">
                      <label className="text-xs text-zinc-400 whitespace-nowrap">Volume Factor:</label>
                      <input 
