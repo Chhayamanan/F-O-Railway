@@ -87,7 +87,7 @@ export class ScanEngine {
          
          const isCrossHigh = spotPrice > cached.high180d;
          const rangePct = cached.low180d && cached.low180d > 0 ? (cached.high180d - cached.low180d) / cached.low180d : 0;
-         const isRangeOk = rangePct > 0 && rangePct <= 0.40;
+         const isRangeOk = rangePct > 0 && rangePct <= 0.80;
          
          if (isRangeOk) {
             const radarItem: ScanResult = {
