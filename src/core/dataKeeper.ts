@@ -44,24 +44,19 @@ export class DataKeeper {
       symbol.endsWith('.NS') || symbol.startsWith('^') || symbol.endsWith('.BO') ? symbol : `${symbol}.NS`
     );
 
-    console.log(`[DATA KEEPER] Strictly syncing ${targetSymbols.length} stocks from universe...`);
+    console.log(`[DATA KEEPER] Memory-safe sync for ${targetSymbols.length} unique targets...`);
     
-    // Keeping a safe chunk size to avoid Yahoo's aggressive blocks
-    const CHUNK_SIZE = 4; 
-    
-    for (let i = 0; i < targetSymbols.length; i += CHUNK_SIZE) {
-      const chunk = targetSymbols.slice(i, i + CHUNK_SIZE);
-      
-      await Promise.all(chunk.map(async (symbol) => {
-        try {
-          const cachedEntry = this.cache![symbol];
-          if (cachedEntry && cachedEntry.lastUpdated) {
-            const ageMs = Date.now() - cachedEntry.lastUpdated;
-            if (ageMs < 12 * 60 * 60 * 1000) {
-              return; // Skip, already recently fetched
-            }
-          }
+    const TWELVE_HOURS = 12 * 60 * 60 * 1000;
 
+    for (let i = 0; i < targetSymbols.length; i++) {
+        const symbol = targetSymbols[i];
+        
+        const existing = this.cache![symbol];
+        if (existing && (Date.now() - existing.lastUpdated < TWELVE_HOURS)) {
+          continue; // Skips instantly, zero memory overhead
+        }
+
+        try {
           const data = await YahooService.get90DayData(symbol);
           
           if (data && data.length > 0) {
@@ -89,19 +84,19 @@ export class DataKeeper {
         } catch (error) {
           console.error(`[DATA KEEPER] Fetch skipped/failed for ${symbol}`);
         }
-      }));
-      
-      // Mandatory pacing window to stop Yahoo from dropping the connection
-      await new Promise(res => setTimeout(res, 800));
-      
-      if (i % 12 === 0 && i !== 0) {
-        console.log(`[DATA KEEPER] Synced ${i}/${targetSymbols.length} targets...`);
-        await this.saveCache(); // Incremental saves
-      }
+
+        // Pacing window per single stock to prevent rate-limiting AND let memory clear out
+        await new Promise(res => setTimeout(res, 250));
+        
+        // Save to disk incrementally every 10 stocks so you never lose progress if killed
+        if (i % 10 === 0 && i !== 0) {
+          console.log(`[DATA KEEPER] Safely committed progress: ${i}/${targetSymbols.length}`);
+          await this.saveCache();
+        }
     }
     
     await this.saveCache();
-    console.log('[DATA KEEPER] Full Universe Sync Complete.');
+    console.log('[DATA KEEPER] Sequential Memory-Safe Sync Complete.');
   }
 
   static getStockData(symbol: string): CachedStockData | null {
