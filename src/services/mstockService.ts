@@ -189,42 +189,47 @@ export class MstockService {
 
       if (nseTokens.length > 0) {
           const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
-          const body = {
-              mode: "FULL",
-              exchangeTokens: {
-                  NSE: nseTokens
-              }
+          const headers = {
+              'X-Mirae-Version': '1',
+              'Authorization': `Bearer ${sessionToken}`,
+              'X-PrivateKey': apiKey,
+              'Content-Type': 'application/json'
           };
 
-          try {
-              const response = await axios({
-                  method: 'POST',
-                  url: url,
-                  headers: {
-                      'X-Mirae-Version': '1',
-                      'Authorization': `Bearer ${sessionToken}`,
-                      'X-PrivateKey': apiKey,
-                      'Content-Type': 'application/json'
-                  },
-                  data: body 
-              });
+          for (let i = 0; i < nseTokens.length; i += 50) {
+              const chunkTokens = nseTokens.slice(i, i + 50);
+              const body = {
+                  mode: "FULL",
+                  exchangeTokens: {
+                      NSE: chunkTokens
+                  }
+              };
 
-              if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
-                  for (const item of response.data.data.fetched) {
-                      const sym = symMap[item.symbolToken] || symMap[String(item.symbolToken)];
-                      if (sym) {
-                          result[sym] = {
-                              price: item.ltp || item.close || item.c || item.price || 0,
-                              volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
-                              prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0
-                          };
+              try {
+                  const response = await axios({
+                      method: 'POST',
+                      url: url,
+                      headers: headers,
+                      data: body 
+                  });
+
+                  if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
+                      for (const item of response.data.data.fetched) {
+                          const sym = symMap[item.symbolToken] || symMap[String(item.symbolToken)];
+                          if (sym) {
+                              result[sym] = {
+                                  price: item.ltp || item.close || item.c || item.price || 0,
+                                  volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
+                                  prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0
+                              };
+                          }
                       }
                   }
+              } catch (mErr: any) {
+                 if (mErr.response && mErr.response.status !== 404 && mErr.response.status !== 400 && mErr.response.status !== 403) {
+                     console.error(`[MSTOCK] API Error: ${mErr.message}`);
+                 }
               }
-          } catch (mErr: any) {
-             if (mErr.response && mErr.response.status !== 404 && mErr.response.status !== 400 && mErr.response.status !== 403) {
-                 console.error(`[MSTOCK] API Error: ${mErr.message}`);
-             }
           }
       }
 
@@ -303,44 +308,49 @@ export class MstockService {
 
       if (nfoTokens.length > 0) {
           const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
-          const body = {
-              mode: "FULL",
-              exchangeTokens: {
-                  NFO: nfoTokens
-              }
+          const headers = {
+              'X-Mirae-Version': '1',
+              'Authorization': `Bearer ${sessionToken}`,
+              'X-PrivateKey': apiKey,
+              'Content-Type': 'application/json'
           };
 
-          try {
-              const response = await axios({
-                  method: 'POST',
-                  url: url,
-                  headers: {
-                      'X-Mirae-Version': '1',
-                      'Authorization': `Bearer ${sessionToken}`,
-                      'X-PrivateKey': apiKey,
-                      'Content-Type': 'application/json'
-                  },
-                  data: body 
-              });
+          for (let i = 0; i < nfoTokens.length; i += 50) {
+              const chunkTokens = nfoTokens.slice(i, i + 50);
+              const body = {
+                  mode: "FULL",
+                  exchangeTokens: {
+                      NFO: chunkTokens
+                  }
+              };
 
-              if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
-                  for (const item of response.data.data.fetched) {
-                      const sym = symMap[item.symbolToken] || symMap[String(item.symbolToken)];
-                      if (sym) {
-                          const info = await this.getFutureSymbolToken(sym, apiKey, sessionToken);
-                          result[sym] = {
-                              price: item.ltp || item.close || item.c || item.price || 0,
-                              volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
-                              prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0,
-                              lotSize: info?.lotSize || 1
-                          };
+              try {
+                  const response = await axios({
+                      method: 'POST',
+                      url: url,
+                      headers: headers,
+                      data: body 
+                  });
+
+                  if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
+                      for (const item of response.data.data.fetched) {
+                          const sym = symMap[item.symbolToken] || symMap[String(item.symbolToken)];
+                          if (sym) {
+                              const info = await this.getFutureSymbolToken(sym, apiKey, sessionToken);
+                              result[sym] = {
+                                  price: item.ltp || item.close || item.c || item.price || 0,
+                                  volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
+                                  prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0,
+                                  lotSize: info?.lotSize || 1
+                              };
+                          }
                       }
                   }
+              } catch (mErr: any) {
+                 if (mErr.response && mErr.response.status !== 404 && mErr.response.status !== 400 && mErr.response.status !== 403) {
+                     console.error(`[MSTOCK] FUT API Error: ${mErr.message}`);
+                 }
               }
-          } catch (mErr: any) {
-             if (mErr.response && mErr.response.status !== 404 && mErr.response.status !== 400 && mErr.response.status !== 403) {
-                 console.error(`[MSTOCK] FUT API Error: ${mErr.message}`);
-             }
           }
       }
       return result;
