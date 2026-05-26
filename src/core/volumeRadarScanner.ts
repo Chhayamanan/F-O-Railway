@@ -59,19 +59,18 @@ export class VolumeRadarScanner {
         // Get current prices and cumulative volumes
         let liveData: any = {};
         try {
-            const CHUNK_SIZE = 50;
-            for (let i = 0; i < RAW_UNIVERSE.length; i += CHUNK_SIZE) {
-                const chunk = RAW_UNIVERSE.slice(i, i + CHUNK_SIZE);
-                let chunkData = {};
-                try {
-                    chunkData = await MstockService.getCurrentPrices(chunk);
-                } catch(e) {
-                    chunkData = await YahooService.getCurrentPrices(chunk);
-                }
-                liveData = { ...liveData, ...chunkData };
+            console.log("[RADAR 5M] Fetching live data...");
+            liveData = await MstockService.getCurrentPrices(RAW_UNIVERSE);
+            if (!liveData || Object.keys(liveData).length === 0) {
+                 throw new Error("Mstock returned empty data");
             }
         } catch(e) {
-            console.log("[RADAR 5M] Fetch failed", e);
+            console.log("[RADAR 5M] MStock fetch failed, falling back to Yahoo...");
+            try {
+                liveData = await YahooService.getCurrentPrices(RAW_UNIVERSE);
+            } catch(e2) {
+                console.log("[RADAR 5M] Yahoo fetch fallback failed", e2);
+            }
         }
 
         const newRadarResults = [...this.radarResults];
