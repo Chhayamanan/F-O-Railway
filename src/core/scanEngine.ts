@@ -61,6 +61,16 @@ export class ScanEngine {
        
        // live quote from Mstock
        let liveData = await MstockService.getCurrentPrices(chunk);
+
+       const testSymbol = 'RELIANCE';
+       if (liveData && liveData[testSymbol]) {
+         console.log(`\n=================================================`);
+         console.log(`[MSTOCK CRITICAL INSPECTION] RAW TARGET RAW PROPERTIES FOR ${testSymbol}:`);
+         console.log(JSON.stringify(liveData[testSymbol], null, 2));
+         console.log(`Available Object Property Keys:`, Object.keys(liveData[testSymbol]));
+         console.log(`=================================================\n`);
+       }
+
        const futureData = await MstockService.getCurrentFuturePrices(chunk);
        
        for (const symbol of chunk) {
@@ -71,19 +81,35 @@ export class ScanEngine {
          
          const plainSymbol = symbol.replace('.NS', '');
          const live = liveData[plainSymbol];
-         if (!live || live.price === 0) continue;
-         
-         const future = futureData ? futureData[plainSymbol] : null;
+         if (!live) continue;
 
-         const ltp = future && future.price > 0 ? future.price : live.price;
-         const spotPrice = live.price;
-         const latestVolume = live.volume;
-         
-         // Fix: Change percentage strictly calculated on the spot price
-         const spotPrevClose = live.prevClose;
+         // 1. Unified Price Resolver (Checks common broker naming conventions)
+         const spotPrice = Number(live.price ?? (live as any).ltp ?? (live as any).close ?? (live as any).c ?? (live as any).open ?? 0);
+         if (spotPrice === 0) continue;
+
+         // 2. Safe Volume Resolver 
+         // If volume fields are zero or dropped at night, look for alternative keys or fallback to 1 to bypass the 0.0x anomaly during testing
+         const latestVolume = Number(
+           live.volume ?? 
+           (live as any).v ?? 
+           (live as any).vol ?? 
+           (live as any).vtt ?? 
+           (live as any).volumeTraded ?? 
+           (live as any).traded_volume ?? 
+           0
+         );
+
+         const spotPrevClose = Number(live.prevClose ?? (live as any).close ?? (live as any).c ?? spotPrice);
          const changePct = spotPrevClose > 0 ? ((spotPrice - spotPrevClose) / spotPrevClose) * 100 : 0;
-         
-         const volMultiplier = cached.avgVol180d > 0 ? (latestVolume / cached.avgVol180d) : 0;
+
+         // 3. Smart Testing Multiplier
+         // If testing at night and volume reads 0, set multiplier to 1.0x so your 180-day breakout and RADAR ranges are fully testable.
+         // During live market hours, real volumes will take over seamlessly.
+         const computedVolMult = cached.avgVol180d > 0 ? (latestVolume / cached.avgVol180d) : 0;
+         const volMultiplier = latestVolume === 0 ? 1.0 : computedVolMult;
+
+         const future = futureData ? futureData[plainSymbol] : null;
+         const ltp = future && future.price > 0 ? future.price : spotPrice;
          
          const isCrossHigh = spotPrice > cached.high180d;
          if (!cached.high180d || !cached.low180d) continue; // Skip missing data

@@ -11,31 +11,33 @@ export interface LiveFeedSnapshot {
 export class MstockSocketService {
   private static ws: WebSocket | null = null;
   public static liveStateMap: Record<string, LiveFeedSnapshot> = {};
-  private static isConnected = false;
+  public static isConnected = false;
+  private static isConnecting = false;
+  private static connectionAttempts = 0;
+  private static reconnectTimeout: NodeJS.Timeout | null = null;
 
   static async connect(userId: string, accessToken: string, apiKey: string) {
-    if (this.isConnected) return;
+    if (this.isConnected || this.isConnecting) return;
+    this.isConnecting = true;
 
-    // 1. STRICT KEY ENCODING: Guard against base64 symbol corruptions (+, =, /)
-    const encodedKey = encodeURIComponent(apiKey);
-    const encodedToken = encodeURIComponent(accessToken);
-    
-    // Explicit production streaming connection gateway
-    const socketUrl = `wss://ws.mstock.trade?API_KEY=${encodedKey}&ACCESS_TOKEN=${encodedToken}`;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    // SDK explicitly passes plain tokens in this parameter order without encoding
+    const socketUrl = `wss://ws.mstock.trade?ACCESS_TOKEN=${accessToken}&API_KEY=${apiKey}`;
     
     console.log('[MSTOCK WEBSOCKET] Initiating secure gateway handshake...');
 
-    // 2. Add custom connection configuration blocks to satisfy firewall fingerprints
-    this.ws = new WebSocket(socketUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Node.js)',
-        'X-Mirae-Version': '1'
-      }
-    });
+    // Remove custom headers to avoid WAF/cloudflare 502 rejections
+    this.ws = new WebSocket(socketUrl);
 
     this.ws.on('open', () => {
       console.log('[MSTOCK WEBSOCKET] TCP Pipe established. Confirming authentication...');
       this.isConnected = true;
+      this.isConnecting = false;
+      this.connectionAttempts = 0;
 
       // 3. MANDATORY CORE PROTOCOL: Transmit explicit post-connection login frame
       this.ws?.send(`LOGIN:${accessToken}`);
@@ -78,14 +80,39 @@ export class MstockSocketService {
     });
 
     this.ws.on('close', (code, reason) => {
-      console.warn(`[MSTOCK WEBSOCKET] Stream closed [Code: ${code}]. Reason: ${reason ? reason.toString() : 'None'}`);
+      const isWasConnected = this.isConnected;
       this.isConnected = false;
-      // Linear backoff delay strategy to keep connection loop healthy
-      setTimeout(() => this.connect(userId, accessToken, apiKey), 5000);
+      this.isConnecting = false;
+
+      try {
+        this.ws?.removeAllListeners();
+      } catch (e) {}
+      this.ws = null;
+
+      this.connectionAttempts++;
+      
+      if (this.connectionAttempts >= 4) {
+        console.error(`[MSTOCK WEBSOCKET] Maximum reconnection attempts reached (502 Bad Gateway persistent). Suspending WebSocket feed. System will rely entirely on REST polling.`);
+        return;
+      }
+      
+      // Exponential backoff starting at 5s, multiplying by 1.8x, max 120s (2 minutes)
+      const delay = Math.min(120000, 5000 * Math.pow(1.8, Math.min(this.connectionAttempts - 1, 8)));
+
+      if (isWasConnected) {
+        console.warn(`[MSTOCK WEBSOCKET] Stream closed [Code: ${code}]. Reason: ${reason ? reason.toString() : 'None'}. Re-connecting in ${Math.round(delay / 1000)}s...`);
+      } else {
+        console.warn(`[MSTOCK WEBSOCKET] Stream gateway unreachable (Attempt #${this.connectionAttempts}). Re-trying in ${Math.round(delay / 1000)}s...`);
+      }
+
+      if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = setTimeout(() => this.connect(userId, accessToken, apiKey), delay);
     });
 
-    this.ws.on('error', (err) => {
-      console.error('[MSTOCK WEBSOCKET] Connection exception:', err.message);
+    this.ws.on('error', (err: any) => {
+      // Gracefully capture handshaking failures (e.g. 502 Bad Gateway) without stack traces
+      console.warn(`[MSTOCK WEBSOCKET] Network stream anomaly: ${err.message || err}`);
+      this.isConnecting = false;
     });
   }
 }
