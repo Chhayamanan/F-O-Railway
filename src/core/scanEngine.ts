@@ -80,22 +80,15 @@ export class ScanEngine {
          if (!cached) continue; 
          
          const plainSymbol = symbol.replace('.NS', '');
-         const live = liveData[plainSymbol];
+         const live = (liveData as any)[plainSymbol] || (liveData as any)[symbol];
          if (!live) continue;
 
-         const spotPrice = live.price;
+         const spotPrice = live.ltp || live.price || 0;
          if (spotPrice === 0) continue;
 
-         const latestVolume = Number(
-           live.volume ?? 
-           (live as any).v ?? 
-           (live as any).vol ?? 
-           (live as any).traded_quantity ?? 
-           (live as any).volume_traded ?? 
-           0
-         );
+         const latestVolume = live.volume || live.v || 0;
 
-         const spotPrevClose = live.prevClose;
+         const spotPrevClose = live.prevClose || 0;
          const changePct = spotPrevClose > 0 ? ((spotPrice - spotPrevClose) / spotPrevClose) * 100 : 0;
 
          // 3. Smart Testing Multiplier

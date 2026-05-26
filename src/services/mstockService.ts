@@ -191,7 +191,7 @@ export class MstockService {
 
       const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
       const body = {
-          mode: "OHLC",
+          mode: "FULL",
           exchangeTokens: {
               NSE: nseTokens
           }
@@ -217,9 +217,9 @@ export class MstockService {
               const sym = symMap[item.symbolToken];
               if (sym) {
                   result[sym] = {
-                      price: item.ltp || item.close || 0,
-                      volume: item.volume || item.vtt || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
-                      prevClose: item.pc || item.previousClose || item.closePrice || item.close || 0
+                      price: item.ltp || item.close || item.c || item.price || 0,
+                      volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
+                      prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0
                   };
               }
           }
@@ -273,7 +273,7 @@ export class MstockService {
 
       const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
       const body = {
-          mode: "OHLC",
+          mode: "FULL",
           exchangeTokens: {
               NFO: nfoTokens
           }
@@ -300,9 +300,9 @@ export class MstockService {
               if (sym) {
                   const info = await this.getFutureSymbolToken(sym, apiKey, sessionToken);
                   result[sym] = {
-                      price: item.ltp || item.close || 0,
-                      volume: item.volume || item.vtt || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
-                      prevClose: item.pc || item.previousClose || item.closePrice || item.close || 0,
+                      price: item.ltp || item.close || item.c || item.price || 0,
+                      volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
+                      prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0,
                       lotSize: info?.lotSize || 1
                   };
               }

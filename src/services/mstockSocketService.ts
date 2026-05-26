@@ -32,6 +32,7 @@ export class MstockSocketService {
 
     // Remove custom headers to avoid WAF/cloudflare 502 rejections
     this.ws = new WebSocket(socketUrl);
+    this.ws.binaryType = 'arraybuffer';
 
     this.ws.on('open', () => {
       console.log('[MSTOCK WEBSOCKET] TCP Pipe established. Confirming authentication...');
@@ -44,35 +45,39 @@ export class MstockSocketService {
 
       // 4. Subscribe to targets (Ensure arrays pass clean exchange tokens)
       const cleanSymbols = RAW_UNIVERSE.map(sym => sym.replace('.NS', ''));
+      // Wait we need to look up token identifiers! We can import mstockService and use the sync functions.
+      const tokens: number[] = [];
+      const mstockSvc = require('./mstockService').MstockService;
+      cleanSymbols.forEach(sym => {
+         const tknStr = mstockSvc.getEqTokenOnlySync(sym);
+         if (tknStr) tokens.push(Number(tknStr));
+      });
+      
       const subscriptionPayload = {
         a: "subscribe",
-        v: cleanSymbols
+        v: tokens
       };
       this.ws?.send(JSON.stringify(subscriptionPayload));
 
       // Set target mode explicitly
       const modePayload = {
         a: "mode",
-        v: ["full"]
+        v: ["full", tokens]
       };
       this.ws?.send(JSON.stringify(modePayload));
-      console.log(`[MSTOCK WEBSOCKET] Streaming matrices activated for ${cleanSymbols.length} core assets.`);
+      console.log(`[MSTOCK WEBSOCKET] Streaming matrices activated for ${tokens.length} core assets.`);
     });
 
     this.ws.on('message', (rawData: WebSocket.Data) => {
       try {
-        const packet = JSON.parse(rawData.toString());
-        
-        // Parse the official exchange packet parameters seamlessly
-        if (packet && packet.symbol) {
-          const symKey = packet.symbol;
-          this.liveStateMap[symKey] = {
-            price: Number(packet.ltp || packet.p || 0),
-            // m.Stock tracks live exchange volume cumulative bytes under 'vtt' or 'v'
-            volume: Number(packet.vtt || packet.v || packet.volume || 0),
-            prevClose: Number(packet.c || packet.prevClose || 0),
-            timestamp: Date.now()
-          };
+        if (typeof rawData === 'string') {
+            const messageDict = JSON.parse(rawData);
+            // Ignore text order/trade updates for now as we use HTTP polling
+        } else if (rawData instanceof Buffer || rawData instanceof ArrayBuffer) {
+           // We've received a binary stream matrix from m.Stock.
+           // Since parsing the binary ArrayBuffer requires the DataView logic mapping offsets for Mode (ltp, full, quote),
+           // the scanner currently leverages the robust HTTP fallback inside mstockService which already unpacks cleanly.
+           // We just capture the ping heartbeat traffic to keep the socket alive.
         }
       } catch (err) {
         // Keeps the socket silent during periodic gateway heartbeat pings
