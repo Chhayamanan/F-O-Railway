@@ -188,73 +188,61 @@ export class MstockService {
       }
 
       if (nseTokens.length > 0) {
-          const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
-          const body = {
-              mode: "FULL",
-              exchangeTokens: {
-                  NSE: nseTokens
-              }
-          };
+          const CHUNK_SIZE = 50;
+          for (let i = 0; i < nseTokens.length; i += CHUNK_SIZE) {
+              const chunk = nseTokens.slice(i, i + CHUNK_SIZE);
+              const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
+              const body = {
+                  mode: "FULL",
+                  exchangeTokens: {
+                      NSE: chunk
+                  }
+              };
 
-          try {
-              const response = await axios({
-                  method: 'POST',
-                  url: url,
-                  headers: {
-                      'X-Mirae-Version': '1',
-                      'Authorization': `Bearer ${sessionToken}`,
-                      'X-PrivateKey': apiKey,
-                      'Content-Type': 'application/json'
-                  },
-                  data: body 
-              });
+              try {
+                  const response = await axios({
+                      method: 'POST',
+                      url: url,
+                      headers: {
+                          'X-Mirae-Version': '1',
+                          'Authorization': `Bearer ${sessionToken}`,
+                          'X-PrivateKey': apiKey,
+                          'Content-Type': 'application/json'
+                      },
+                      data: body 
+                  });
 
-              if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
-                  for (const item of response.data.data.fetched) {
-                      const sym = symMap[item.symbolToken] || symMap[String(item.symbolToken)];
-                      if (sym) {
-                          result[sym] = {
-                              price: item.ltp || item.close || item.c || item.price || 0,
-                              volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
-                              prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0
-                          };
+                  if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
+                      for (const item of response.data.data.fetched) {
+                          const sym = symMap[item.symbolToken] || symMap[String(item.symbolToken)];
+                          if (sym) {
+                              result[sym] = {
+                                  price: item.ltp || item.close || item.c || item.price || 0,
+                                  volume: Number(item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0),
+                                  prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0
+                              };
+                          }
                       }
                   }
+              } catch (mErr: any) {
+                 if (mErr.response && mErr.response.status !== 404 && mErr.response.status !== 400 && mErr.response.status !== 403) {
+                     console.error(`[MSTOCK] API Error for chunk: ${mErr.message}`);
+                 }
               }
-          } catch (mErr: any) {
-             if (mErr.response && mErr.response.status !== 404 && mErr.response.status !== 400 && mErr.response.status !== 403) {
-                 console.error(`[MSTOCK] API Error: ${mErr.message}`);
-             }
+              // throttle mstock requests slightly
+              await new Promise(resolve => setTimeout(resolve, 100));
           }
       }
 
-      // Final pass: Backfill missing volumes or prices using Yahoo Finance
+      // Explicitly disable Yahoo Finance fallback as per user request to only use MStock
+      /*
       const keysWithMissingData = Object.keys(result).filter(k => !result[k].price || !result[k].volume);
       const missingKeys = symbols.filter(s => {
           const clean = s.replace(".NS", "");
           return !result[clean] || !result[clean].price || !result[clean].volume;
       });
 
-      if (missingKeys.length > 0) {
-          try {
-              const { YahooService } = await import('./yahooService');
-              const yData = await YahooService.getCurrentPrices(missingKeys);
-              for (const sym of missingKeys) {
-                  const clean = sym.replace(".NS", "");
-                  const y = yData[clean] || yData[sym];
-                  if (y) {
-                      if (!result[clean]) {
-                           result[clean] = { price: 0, volume: 0, prevClose: 0 };
-                      }
-                      if (!result[clean].price) result[clean].price = y.price;
-                      if (!result[clean].volume) result[clean].volume = y.volume;
-                      if (!result[clean].prevClose) result[clean].prevClose = y.prevClose;
-                  }
-              }
-          } catch (e) {
-              console.error("[MSTOCK] Yahoo fallback failed:", e);
-          }
-      }
+      if (missingKeys.length > 0) { ...*/
 
       return result;
     } catch (e: any) {

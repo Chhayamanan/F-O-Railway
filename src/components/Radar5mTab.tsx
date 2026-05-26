@@ -29,12 +29,25 @@ export default function Radar5mTab() {
 
   const toggleScan = async () => {
     if (!status) return;
+
+    if (!status.isRunning && !status.hasBaselines) {
+        alert("Please wait. Radar is fetching historical baselines...");
+        await fetch('/api/radar5m/init', { method: 'POST' });
+        // wait a little bit and fetch status, though it runs in background
+        return;
+    }
+
     if (status.isRunning) {
         await fetch('/api/radar5m/stop', { method: 'POST' });
     } else {
         await fetch('/api/radar5m/start', { method: 'POST' });
     }
     fetchStatus();
+  };
+
+  const initBaselines = async () => {
+      await fetch('/api/radar5m/init', { method: 'POST' });
+      alert("Initializing 400-period baselines in background. Check server logs!");
   };
 
   const updateMultiplier = async () => {
@@ -88,7 +101,7 @@ export default function Radar5mTab() {
                   onClick={toggleScan}
                   className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-all ${status.isRunning ? 'bg-rose-950/50 hover:bg-rose-900 text-rose-400 border border-rose-900' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'}`}
                >
-                  {status.isRunning ? <><Square size={16} /> Stop Scanner</> : <><Play size={16} fill="currentColor" /> Start Radar</>}
+                  {status.isRunning ? <><Square size={16} /> Stop Scanner</> : <><Play size={16} fill="currentColor" /> {status.hasBaselines ? 'Start Radar' : 'Init Baselines & Start'}</>}
                </button>
            </div>
        </div>
