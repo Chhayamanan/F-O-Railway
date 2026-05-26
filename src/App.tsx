@@ -20,6 +20,7 @@ interface ScanResult {
 }
 
 import HistoricalDataTab from './components/HistoricalDataTab';
+import Radar5mTab from './components/Radar5mTab';
 
 function App() {
   const [scanScope, setScanScope] = useState<ScanResult[]>([]);
@@ -263,7 +264,7 @@ function App() {
         </div>
 
          {/* Per-tab Configuration & global controls */}
-         {activeTab !== 'STOP_LOSS' && (
+         {activeTab !== 'STOP_LOSS' && activeTab !== 'HISTORICAL' && activeTab !== 'RADAR' && (
            <div className="bg-zinc-900/40 p-4 rounded-xl border border-zinc-800 mt-4 mb-8 flex flex-wrap items-center justify-between gap-4">
              <div className="flex items-center gap-4 flex-wrap">
                <span className="text-sm font-medium text-emerald-400 mr-2">{activeTab} Scanning Config:</span>
@@ -317,7 +318,9 @@ function App() {
           
           {/* Scan Scope Column */}
           <div className="lg:col-span-2 space-y-6">
-             {activeTab === 'HISTORICAL' ? (
+             {activeTab === 'RADAR' ? (
+                <Radar5mTab />
+             ) : activeTab === 'HISTORICAL' ? (
                 <HistoricalDataTab />
              ) : activeTab === 'STOP_LOSS' ? (
                 <div className="bg-rose-950/20 border border-rose-900/50 rounded-xl overflow-hidden">

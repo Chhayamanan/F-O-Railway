@@ -9,6 +9,7 @@ import { RAW_UNIVERSE } from "./services/marketDataService";
 import { MstockService } from "./services/mstockService";
 import { DataKeeper } from "./core/dataKeeper";
 import { ScanEngine } from "./core/scanEngine";
+import { VolumeRadarScanner } from "./core/volumeRadarScanner";
 
 async function startServer() {
   const app = express();
@@ -157,6 +158,36 @@ async function startServer() {
      const cache = await DataKeeper.getCache();
      const syncedCount = Object.keys(cache).length;
      res.json({ success: true, syncedCount });
+  });
+
+  // ======== RADAR 5M API ========
+  app.get("/api/radar5m/status", (req, res) => {
+    res.json({
+        isRunning: VolumeRadarScanner.isRunning,
+        lastScanTime: VolumeRadarScanner.lastScanTime,
+        radarList: VolumeRadarScanner.radarResults,
+        threshold: VolumeRadarScanner.threshold
+    });
+  });
+
+  app.post("/api/radar5m/start", (req, res) => {
+    VolumeRadarScanner.start();
+    res.json({ success: true });
+  });
+
+  app.post("/api/radar5m/stop", (req, res) => {
+    VolumeRadarScanner.stop();
+    res.json({ success: true });
+  });
+
+  app.post("/api/radar5m/threshold", (req, res) => {
+    const { threshold } = req.body;
+    if (typeof threshold === 'number') {
+        VolumeRadarScanner.setThreshold(threshold);
+        res.json({ success: true });
+    } else {
+        res.status(400).json({ success: false, error: "Invalid threshold" });
+    }
   });
 
   // ======== MSTOCK API ========
