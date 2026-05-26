@@ -214,9 +214,8 @@ export class MstockService {
                       }
                   }
               } catch (mErr: any) {
-                 console.error("[MSTOCK] Error fetching live quotes API:", mErr.message);
-                 if (mErr.response && mErr.response.data) {
-                     console.error("[MSTOCK] Error Details:", JSON.stringify(mErr.response.data));
+                 if (mErr.response && mErr.response.status !== 404 && mErr.response.status !== 400 && mErr.response.status !== 403) {
+                     console.error(`[MSTOCK] API Error: ${mErr.message}`);
                  }
               }
           }
@@ -327,9 +326,8 @@ export class MstockService {
                       }
                   }
               } catch (mErr: any) {
-                 console.error("[MSTOCK] Error fetching live future quotes API:", mErr.message);
-                 if (mErr.response && mErr.response.data) {
-                     console.error("[MSTOCK FUT] Error Details:", JSON.stringify(mErr.response.data));
+                 if (mErr.response && mErr.response.status !== 404 && mErr.response.status !== 400 && mErr.response.status !== 403) {
+                     console.error(`[MSTOCK] FUT API Error: ${mErr.message}`);
                  }
               }
           }

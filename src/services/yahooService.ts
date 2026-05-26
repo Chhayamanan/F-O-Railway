@@ -31,7 +31,7 @@ export class YahooService {
     try {
       const results: Record<string, any> = {};
       
-      const CHUNK_SIZE = 50; 
+      const CHUNK_SIZE = 250; 
       for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
          const chunk = symbols.slice(i, i + CHUNK_SIZE).map(s => s.endsWith('.NS') ? s : s + '.NS');
          try {
@@ -44,8 +44,8 @@ export class YahooService {
                   prevClose: item.regularMarketPreviousClose || 0
                };
             }
-         } catch (chunkErr) {
-            console.error(`[YAHOO] Error fetching chunk:`, chunkErr);
+         } catch (chunkErr: any) {
+            console.error(`[YAHOO] Error fetching chunk of size ${chunk.length}: ${chunkErr.message}`);
          }
       }
       return results;
