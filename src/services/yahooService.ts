@@ -1,42 +1,58 @@
 import { MstockService } from './mstockService';
+import yahooFinanceDefault from 'yahoo-finance2';
+
+const yahooFinance = typeof yahooFinanceDefault === 'function' 
+  ? new (yahooFinanceDefault as any)() 
+  : (yahooFinanceDefault as any);
 
 export class YahooService {
   static async get180DayData(symbol: string) {
-    const cleanSym = symbol.replace('.NS', '').replace('.BO', '').toUpperCase();
-    console.log(`[YAHOO BYPASS] Simulating 180-day walking historical markers for ${cleanSym}`);
+    const ticker = symbol.endsWith('.NS') || symbol.startsWith('^') ? symbol : `${symbol}.NS`;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 180);
     
-    let currentPrice = 500; // fallback base anchor
     try {
-        const live = await MstockService.getCurrentPrices([cleanSym]);
-        if (live[cleanSym] && live[cleanSym].price > 0) {
-            currentPrice = live[cleanSym].price;
-        }
-    } catch (e) {
-        // silent fallback
-    }
-
-    const basePrice = currentPrice;
-    const quotes = [];
-
-    // Simulate 180 days of price ticks using a deterministic mathematical wander curve
-    for (let i = 0; i < 180; i++) {
-        const sineWave = Math.sin(i / 12) * 0.18;
-        const cosineWave = Math.cos(i / 30) * 0.08;
-        const randomNoise = (Math.random() - 0.5) * 0.04;
-        const priceWander = basePrice * (1 + sineWave + cosineWave + randomNoise);
-
-        quotes.push({
-            high: priceWander * 1.03,
-            low: priceWander * 0.97,
-            volume: Math.floor(100000 + Math.random() * 2000000)
+        const chartData = await yahooFinance.chart(ticker, {
+            period1: startDate,
+            period2: new Date(),
+            interval: "1d"
         });
+        return (chartData.quotes || []).map((q: any) => ({
+            high: q.high || 0,
+            low: q.low || 0,
+            volume: q.volume || 0
+        }));
+    } catch (e: any) {
+        console.error(`[YAHOO F&O] Historical fetch failed for ${ticker}:`, e.message);
+        return [];
     }
-
-    return quotes;
   }
 
   static async getCurrentPrices(symbols: string[]) {
-    // Completely bypassed
-    return {};
+    try {
+      const results: Record<string, any> = {};
+      
+      const CHUNK_SIZE = 50; 
+      for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
+         const chunk = symbols.slice(i, i + CHUNK_SIZE).map(s => s.endsWith('.NS') ? s : s + '.NS');
+         try {
+            const data = await yahooFinance.quote(chunk) as any[];
+            for (const item of data) {
+               const cleanSym = item.symbol.replace('.NS', '');
+               results[cleanSym] = {
+                  price: item.regularMarketPrice || 0,
+                  volume: item.regularMarketVolume || 0,
+                  prevClose: item.regularMarketPreviousClose || 0
+               };
+            }
+         } catch (chunkErr) {
+            console.error(`[YAHOO] Error fetching chunk:`, chunkErr);
+         }
+      }
+      return results;
+    } catch (e: any) {
+      console.error("[YAHOO] Global fail fetching live quotes:", e.message);
+      return {};
+    }
   }
 }

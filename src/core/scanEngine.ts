@@ -59,7 +59,7 @@ export class ScanEngine {
     for (let i = 0; i < universe.length; i += CHUNK_SIZE) {
        const chunk = universe.slice(i, i + CHUNK_SIZE);
        
-       // live quote from Mstock
+       // chunking to avoid limits
        let liveData = await MstockService.getCurrentPrices(chunk);
 
        const testSymbol = 'RELIANCE';
@@ -87,7 +87,6 @@ export class ScanEngine {
          if (spotPrice === 0) continue;
 
          const latestVolume = live.volume || live.v || 0;
-
          const spotPrevClose = live.prevClose || 0;
          const changePct = spotPrevClose > 0 ? ((spotPrice - spotPrevClose) / spotPrevClose) * 100 : 0;
 

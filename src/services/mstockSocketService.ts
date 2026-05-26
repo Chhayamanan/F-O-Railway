@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import { RAW_UNIVERSE } from './marketDataService';
+import { MstockService } from './mstockService';
 
 export interface LiveFeedSnapshot {
   price: number;
@@ -45,11 +46,10 @@ export class MstockSocketService {
 
       // 4. Subscribe to targets (Ensure arrays pass clean exchange tokens)
       const cleanSymbols = RAW_UNIVERSE.map(sym => sym.replace('.NS', ''));
-      // Wait we need to look up token identifiers! We can import mstockService and use the sync functions.
+      // Wait we need to look up token identifiers!
       const tokens: number[] = [];
-      const mstockSvc = require('./mstockService').MstockService;
       cleanSymbols.forEach(sym => {
-         const tknStr = mstockSvc.getEqTokenOnlySync(sym);
+         const tknStr = MstockService.getEqTokenOnlySync(sym);
          if (tknStr) tokens.push(Number(tknStr));
       });
       
@@ -74,10 +74,27 @@ export class MstockSocketService {
             const messageDict = JSON.parse(rawData);
             // Ignore text order/trade updates for now as we use HTTP polling
         } else if (rawData instanceof Buffer || rawData instanceof ArrayBuffer) {
-           // We've received a binary stream matrix from m.Stock.
-           // Since parsing the binary ArrayBuffer requires the DataView logic mapping offsets for Mode (ltp, full, quote),
-           // the scanner currently leverages the robust HTTP fallback inside mstockService which already unpacks cleanly.
-           // We just capture the ping heartbeat traffic to keep the socket alive.
+           try {
+               const buf = rawData instanceof ArrayBuffer ? Buffer.from(rawData) : rawData;
+               if (buf.length >= 20) {
+                   const token = buf.readInt32BE(0);          // token identifier
+                   const ltp   = buf.readInt32BE(4) / 100;   // price (paise → rupees)
+                   const volume = buf.readInt32BE(16);        // cumulative traded volume
+                   const prevClose = buf.readInt32BE(12) / 100;
+       
+                   const sym = MstockService.getSymbolFromTokenSync(String(token));
+                   if (sym) {
+                       MstockSocketService.liveStateMap[sym] = {
+                           price: ltp,
+                           volume,
+                           prevClose,
+                           timestamp: Date.now()
+                       };
+                       // Also store by token string as fallback key
+                       MstockSocketService.liveStateMap[String(token)] = MstockSocketService.liveStateMap[sym];
+                   }
+               }
+           } catch (_) {}
         }
       } catch (err) {
         // Keeps the socket silent during periodic gateway heartbeat pings

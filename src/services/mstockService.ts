@@ -187,46 +187,76 @@ export class MstockService {
          }
       }
 
-      if (nseTokens.length === 0) return result;
-
-      const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
-      const body = {
-          mode: "FULL",
-          exchangeTokens: {
-              NSE: nseTokens
-          }
-      };
-
-      const response = await axios({
-          method: 'POST',
-          url: url,
-          headers: {
-              'X-Mirae-Version': '1',
-              'Authorization': `Bearer ${sessionToken}`,
-              'X-PrivateKey': apiKey,
-              'Content-Type': 'application/json'
-          },
-          data: body 
-      });
-
-       if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
-          if (response.data.data.fetched.length > 0) {
-              console.log("[MSTOCK DEBUG] FETCHED KEYS:", Object.keys(response.data.data.fetched[0]), "SAMPLE:", JSON.stringify(response.data.data.fetched[0]));
-          }
-          for (const item of response.data.data.fetched) {
-              const sym = symMap[item.symbolToken];
-              if (sym) {
-                  result[sym] = {
-                      price: item.ltp || item.close || item.c || item.price || 0,
-                      volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
-                      prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0
-                  };
+      if (nseTokens.length > 0) {
+          const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
+          const body = {
+              mode: "FULL",
+              exchangeTokens: {
+                  NSE: nseTokens
               }
+          };
+
+          try {
+              const response = await axios({
+                  method: 'POST',
+                  url: url,
+                  headers: {
+                      'X-Mirae-Version': '1',
+                      'Authorization': `Bearer ${sessionToken}`,
+                      'X-PrivateKey': apiKey,
+                      'Content-Type': 'application/json'
+                  },
+                  data: body 
+              });
+
+              if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
+                  for (const item of response.data.data.fetched) {
+                      const sym = symMap[item.symbolToken];
+                      if (sym) {
+                          result[sym] = {
+                              price: item.ltp || item.close || item.c || item.price || 0,
+                              volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
+                              prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0
+                          };
+                      }
+                  }
+              }
+          } catch (mErr) {
+             console.error("[MSTOCK] Error fetching live quotes API:", (mErr as any).message);
           }
       }
+
+      // Final pass: Backfill missing volumes or prices using Yahoo Finance
+      const keysWithMissingData = Object.keys(result).filter(k => !result[k].price || !result[k].volume);
+      const missingKeys = symbols.filter(s => {
+          const clean = s.replace(".NS", "");
+          return !result[clean] || !result[clean].price || !result[clean].volume;
+      });
+
+      if (missingKeys.length > 0) {
+          try {
+              const { YahooService } = await import('./yahooService');
+              const yData = await YahooService.getCurrentPrices(missingKeys);
+              for (const sym of missingKeys) {
+                  const clean = sym.replace(".NS", "");
+                  const y = yData[clean] || yData[sym];
+                  if (y) {
+                      if (!result[clean]) {
+                           result[clean] = { price: 0, volume: 0, prevClose: 0 };
+                      }
+                      if (!result[clean].price) result[clean].price = y.price;
+                      if (!result[clean].volume) result[clean].volume = y.volume;
+                      if (!result[clean].prevClose) result[clean].prevClose = y.prevClose;
+                  }
+              }
+          } catch (e) {
+              console.error("[MSTOCK] Yahoo fallback failed:", e);
+          }
+      }
+
       return result;
     } catch (e: any) {
-      console.error("[MSTOCK] Error fetching live quotes:", e.response?.data || e.message);
+      console.error("[MSTOCK] Global error fetching live quotes:", e.response?.data || e.message);
       return {};
     }
   }
