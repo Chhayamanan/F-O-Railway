@@ -19,6 +19,8 @@ interface ScanResult {
   qty?: number;
 }
 
+import HistoricalDataTab from './components/HistoricalDataTab';
+
 function App() {
   const [scanScope, setScanScope] = useState<ScanResult[]>([]);
   const [ceoDesk, setCeoDesk] = useState<ScanResult[]>([]);
@@ -26,7 +28,7 @@ function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [actionLogs, setActionLogs] = useState<string[]>([]);
   const [isAutoScanning, setIsAutoScanning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY' | 'STOP_LOSS' | 'RADAR'>('FUT');
+  const [activeTab, setActiveTab] = useState<'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY' | 'STOP_LOSS' | 'RADAR' | 'HISTORICAL'>('FUT');
   const [futHighDistance, setFutHighDistance] = useState<number>(0.98);
   const [futBaseVolMultiplier, setFutBaseVolMultiplier] = useState<number>(2.0);
   const [optHighDistance, setOptHighDistance] = useState<number>(0.98);
@@ -252,6 +254,12 @@ function App() {
           >
             Stop Loss
           </button>
+          <button 
+            onClick={() => setActiveTab('HISTORICAL')}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${activeTab === 'HISTORICAL' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+          >
+            5Min Hist
+          </button>
         </div>
 
          {/* Per-tab Configuration & global controls */}
@@ -309,7 +317,9 @@ function App() {
           
           {/* Scan Scope Column */}
           <div className="lg:col-span-2 space-y-6">
-             {activeTab === 'STOP_LOSS' ? (
+             {activeTab === 'HISTORICAL' ? (
+                <HistoricalDataTab />
+             ) : activeTab === 'STOP_LOSS' ? (
                 <div className="bg-rose-950/20 border border-rose-900/50 rounded-xl overflow-hidden">
                   <div className="bg-rose-900/40 p-4 border-b border-rose-900/50 flex items-center justify-between">
                      <div className="flex items-center gap-3">

@@ -47,6 +47,20 @@ async function startServer() {
     }
   });
 
+  app.post("/api/fetch-historical", async (req, res) => {
+    try {
+      // Run it in the background to avoid blocking the request
+      const { exec } = require('child_process');
+      exec('npx tsx scripts/fetchHistorical.ts', (err: any, stdout: string, stderr: string) => {
+         if (err) console.error("Historical fetch failed:", err);
+         else console.log("Historical fetch completed:\n", stdout);
+      });
+      res.json({ success: true, message: "Fetch started in background" });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   app.post("/api/scan/ceo-action", async (req, res) => {
     try {
       const { symbol, action, type } = req.body;
