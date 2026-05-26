@@ -166,7 +166,7 @@ async function startServer() {
         isRunning: VolumeRadarScanner.isRunning,
         lastScanTime: VolumeRadarScanner.lastScanTime,
         radarList: VolumeRadarScanner.radarResults,
-        threshold: VolumeRadarScanner.threshold
+        multiplier: VolumeRadarScanner.multiplier
     });
   });
 
@@ -180,13 +180,13 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  app.post("/api/radar5m/threshold", (req, res) => {
-    const { threshold } = req.body;
-    if (typeof threshold === 'number') {
-        VolumeRadarScanner.setThreshold(threshold);
+  app.post("/api/radar5m/multiplier", (req, res) => {
+    const { multiplier } = req.body;
+    if (typeof multiplier === 'number') {
+        VolumeRadarScanner.setMultiplier(multiplier);
         res.json({ success: true });
     } else {
-        res.status(400).json({ success: false, error: "Invalid threshold" });
+        res.status(400).json({ success: false, error: "Invalid multiplier" });
     }
   });
 

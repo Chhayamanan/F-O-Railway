@@ -19,7 +19,7 @@ export class VolumeRadarScanner {
     public static lastCumulativeVolumes: Record<string, number> = {};
     public static radarResults: VolumeRadarItem[] = [];
     public static lastScanTime: number = 0;
-    public static threshold: number = 10000;
+    public static multiplier: number = 10;
 
     static loadAverages() {
         const dir = path.join(process.cwd(), 'historical_data_5m');
@@ -94,9 +94,9 @@ export class VolumeRadarScanner {
                 const recent5mVol = currentCumVol - lastCumVol;
                 const avg400 = this.avg5mVolumes[cleanSym] || 0;
 
-                // Threshold Check: The user specified "if its more than 10000"
-                // Additionally, we might only care if it exceeds average by some margin, but let's stick to threshold
-                if (recent5mVol > this.threshold) {
+                // Multiplier Check: we calculate target volume via multiplier (e.g., 10 * average)
+                const targetVolume = (avg400 || 0) * this.multiplier;
+                if (avg400 > 0 && recent5mVol > targetVolume) {
                     const existingIdx = newRadarResults.findIndex(r => r.symbol === cleanSym);
                     const radarItem: VolumeRadarItem = {
                         symbol: cleanSym,
@@ -119,7 +119,7 @@ export class VolumeRadarScanner {
 
         if (!isInitialBaseline) {
             this.radarResults = newRadarResults;
-            console.log(`[RADAR 5M] Found ${this.radarResults.length} stocks exceeding ${this.threshold} 5m volume.`);
+            console.log(`[RADAR 5M] Found ${this.radarResults.length} stocks exceeding their ${this.multiplier}x volume multiplier.`);
         }
     }
 
@@ -149,7 +149,7 @@ export class VolumeRadarScanner {
         console.log("[RADAR 5M] Scanner stopped.");
     }
 
-    static setThreshold(val: number) {
-        this.threshold = val;
+    static setMultiplier(val: number) {
+        this.multiplier = val;
     }
 }

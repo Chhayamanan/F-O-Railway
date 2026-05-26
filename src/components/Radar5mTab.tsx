@@ -3,8 +3,8 @@ import { Activity, Play, Square, Settings, RefreshCw, Clock } from 'lucide-react
 
 export default function Radar5mTab() {
   const [status, setStatus] = useState<any>(null);
-  const [threshold, setThreshold] = useState<number>(10000);
-  const [inputThreshold, setInputThreshold] = useState<string>('10000');
+  const [multiplier, setMultiplier] = useState<number>(10);
+  const [inputMultiplier, setInputMultiplier] = useState<string>('10');
   
   const fetchStatus = async () => {
     try {
@@ -21,11 +21,11 @@ export default function Radar5mTab() {
   }, []);
 
   useEffect(() => {
-      if (status && status.threshold) {
-          setThreshold(status.threshold);
-          setInputThreshold(status.threshold.toString());
+      if (status && status.multiplier) {
+          setMultiplier(status.multiplier);
+          setInputMultiplier(status.multiplier.toString());
       }
-  }, [status?.threshold]);
+  }, [status?.multiplier]);
 
   const toggleScan = async () => {
     if (!status) return;
@@ -37,13 +37,13 @@ export default function Radar5mTab() {
     fetchStatus();
   };
 
-  const updateThreshold = async () => {
-    const val = parseInt(inputThreshold);
+  const updateMultiplier = async () => {
+    const val = parseInt(inputMultiplier);
     if (!isNaN(val)) {
-        await fetch('/api/radar5m/threshold', {
+        await fetch('/api/radar5m/multiplier', {
            method: 'POST',
            headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({ threshold: val })
+           body: JSON.stringify({ multiplier: val })
         });
         fetchStatus();
     }
@@ -75,12 +75,12 @@ export default function Radar5mTab() {
 
            <div className="flex items-center gap-4">
                <div className="flex items-center gap-2 bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800">
-                   <label className="text-xs text-zinc-500 font-medium">Vol Threshold</label>
+                   <label className="text-xs text-zinc-500 font-medium">Vol Multiplier (xAvg)</label>
                    <input
                       type="number"
-                      value={inputThreshold}
-                      onChange={(e) => setInputThreshold(e.target.value)}
-                      onBlur={updateThreshold}
+                      value={inputMultiplier}
+                      onChange={(e) => setInputMultiplier(e.target.value)}
+                      onBlur={updateMultiplier}
                       className="bg-transparent text-emerald-400 font-mono text-sm w-20 text-right outline-none"
                    />
                </div>
