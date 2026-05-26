@@ -61,6 +61,87 @@ async function startServer() {
     }
   });
 
+  app.get("/api/historical/files", (req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const dir = path.join(process.cwd(), 'historical_data_5m');
+      if (!fs.existsSync(dir)) {
+        return res.json({ success: true, symbols: [] });
+      }
+      const files = fs.readdirSync(dir).filter((f: string) => f.endsWith('_5m.json'));
+      const symbols = files.map((f: string) => f.replace('_5m.json', ''));
+      res.json({ success: true, symbols });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get("/api/historical/download/:symbol", (req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const xlsx = require('xlsx');
+      
+      const { symbol } = req.params;
+      const filePath = path.join(process.cwd(), 'historical_data_5m', `${symbol}_5m.json`);
+      
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).send('File not found');
+      }
+      
+      const rawData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      
+      const ws = xlsx.utils.json_to_sheet(rawData);
+      const wb = xlsx.utils.book_new();
+      xlsx.utils.book_append_sheet(wb, ws, "5M Data");
+      
+      const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      
+      res.setHeader('Content-Disposition', `attachment; filename="${symbol}_5m.xlsx"`);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.send(buffer);
+    } catch (e: any) {
+      res.status(500).send(e.message);
+    }
+  });
+
+  app.get("/api/historical/download-all", (req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const AdmZip = require('adm-zip');
+      const xlsx = require('xlsx');
+      
+      const dir = path.join(process.cwd(), 'historical_data_5m');
+      if (!fs.existsSync(dir)) {
+        return res.status(404).send('No data available');
+      }
+      
+      const files = fs.readdirSync(dir).filter((f: string) => f.endsWith('_5m.json'));
+      
+      const zip = new AdmZip();
+      
+      for (const file of files) {
+        const symbol = file.replace('_5m.json', '');
+        const rawData = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf-8'));
+        
+        const ws = xlsx.utils.json_to_sheet(rawData);
+        const csv = xlsx.utils.sheet_to_csv(ws);
+        
+        zip.addFile(`${symbol}_5m.csv`, Buffer.from(csv, 'utf8'));
+      }
+      
+      const zipBuffer = zip.toBuffer();
+      
+      res.setHeader('Content-Disposition', `attachment; filename="All_Historical_5m.zip"`);
+      res.setHeader('Content-Type', 'application/zip');
+      res.send(zipBuffer);
+    } catch(e: any) {
+      res.status(500).send(e.message);
+    }
+  });
+
   app.post("/api/scan/ceo-action", async (req, res) => {
     try {
       const { symbol, action, type } = req.body;
