@@ -2,7 +2,7 @@ import { MstockService } from './mstockService';
 import yahooFinanceDefault from 'yahoo-finance2';
 
 const YahooFinanceClass = (yahooFinanceDefault as any).default || yahooFinanceDefault;
-const yahooFinance = typeof YahooFinanceClass === 'function' ? new YahooFinanceClass() : YahooFinanceClass;
+const yahooFinance = typeof YahooFinanceClass === 'function' ? new YahooFinanceClass({ suppressNotices: ['yahooSurvey'] }) : YahooFinanceClass;
 
 export class YahooService {
   static async get180DayData(symbol: string) {

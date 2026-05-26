@@ -188,44 +188,37 @@ export class MstockService {
       }
 
       if (nseTokens.length > 0) {
-          const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
-          const body = {
-              mode: "FULL",
-              exchangeTokens: {
-                  NSE: nseTokens
-              }
+          const headers = {
+              'X-Mirae-Version': '1',
+              'Authorization': `Bearer ${sessionToken}`,
+              'X-PrivateKey': apiKey,
+              'Content-Type': 'application/json'
           };
+          for (let i = 0; i < nseTokens.length; i += 50) {
+              const chunkTokens = nseTokens.slice(i, i + 50);
+              const url = `https://api.mstock.trade/openapi/typeb/marketdata/Livequotes?exchange=NSE&symbolToken=${chunkTokens.join(',')}`;
 
-          try {
-              const response = await axios({
-                  method: 'POST',
-                  url: url,
-                  headers: {
-                      'X-Mirae-Version': '1',
-                      'Authorization': `Bearer ${sessionToken}`,
-                      'X-PrivateKey': apiKey,
-                      'Content-Type': 'application/json'
-                  },
-                  data: body 
-              });
+              try {
+                  const response = await axios.get(url, { headers });
 
-              if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
-                  for (const item of response.data.data.fetched) {
-                      const sym = symMap[item.symbolToken];
-                      if (sym) {
-                          result[sym] = {
-                              price: item.ltp || item.close || item.c || item.price || 0,
-                              volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
-                              prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0
-                          };
+                  if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
+                      for (const item of response.data.data.fetched) {
+                          const sym = symMap[item.symbolToken] || symMap[String(item.symbolToken)];
+                          if (sym) {
+                              result[sym] = {
+                                  price: item.ltp || item.close || item.c || item.price || 0,
+                                  volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
+                                  prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0
+                              };
+                          }
                       }
                   }
+              } catch (mErr: any) {
+                 console.error("[MSTOCK] Error fetching live quotes API:", mErr.message);
+                 if (mErr.response && mErr.response.data) {
+                     console.error("[MSTOCK] Error Details:", JSON.stringify(mErr.response.data));
+                 }
               }
-          } catch (mErr: any) {
-             console.error("[MSTOCK] Error fetching live quotes API:", mErr.message);
-             if (mErr.response && mErr.response.data) {
-                 console.error("[MSTOCK] Error Details:", JSON.stringify(mErr.response.data));
-             }
           }
       }
 
@@ -302,42 +295,42 @@ export class MstockService {
          }
       }
 
-      if (nfoTokens.length === 0) return result;
-
-      const url = "https://api.mstock.trade/openapi/typeb/instruments/quote";
-      const body = {
-          mode: "FULL",
-          exchangeTokens: {
-              NFO: nfoTokens
-          }
-      };
-
-      const response = await axios({
-          method: 'POST',
-          url: url,
-          headers: {
+      if (nfoTokens.length > 0) {
+          const headers = {
               'X-Mirae-Version': '1',
               'Authorization': `Bearer ${sessionToken}`,
               'X-PrivateKey': apiKey,
               'Content-Type': 'application/json'
-          },
-          data: body 
-      });
+          };
+          for (let i = 0; i < nfoTokens.length; i += 50) {
+              const chunkTokens = nfoTokens.slice(i, i + 50);
+              const url = `https://api.mstock.trade/openapi/typeb/marketdata/Livequotes?exchange=NFO&symbolToken=${chunkTokens.join(',')}`;
 
-      if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
-          if (response.data.data.fetched.length > 0) {
-              console.log("[MSTOCK FUT DEBUG] FETCHED KEYS:", Object.keys(response.data.data.fetched[0]), "SAMPLE:", JSON.stringify(response.data.data.fetched[0]));
-          }
-          for (const item of response.data.data.fetched) {
-              const sym = symMap[item.symbolToken];
-              if (sym) {
-                  const info = await this.getFutureSymbolToken(sym, apiKey, sessionToken);
-                  result[sym] = {
-                      price: item.ltp || item.close || item.c || item.price || 0,
-                      volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
-                      prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0,
-                      lotSize: info?.lotSize || 1
-                  };
+              try {
+                  const response = await axios.get(url, { headers });
+
+                  if (response.data && response.data.data && Array.isArray(response.data.data.fetched)) {
+                      if (response.data.data.fetched.length > 0) {
+                          console.log("[MSTOCK FUT DEBUG] FETCHED KEYS:", Object.keys(response.data.data.fetched[0]), "SAMPLE:", JSON.stringify(response.data.data.fetched[0]));
+                      }
+                      for (const item of response.data.data.fetched) {
+                          const sym = symMap[item.symbolToken] || symMap[String(item.symbolToken)];
+                          if (sym) {
+                              const info = await this.getFutureSymbolToken(sym, apiKey, sessionToken);
+                              result[sym] = {
+                                  price: item.ltp || item.close || item.c || item.price || 0,
+                                  volume: item.volume || item.vtt || item.v || item.vol || item.traded_quantity || item.volume_traded || item.tradedVolume || item.lastTradedVolume || item.tradedQty || item.totalTradedVolume || 0,
+                                  prevClose: item.pc || item.previousClose || item.closePrice || item.close || item.c || 0,
+                                  lotSize: info?.lotSize || 1
+                              };
+                          }
+                      }
+                  }
+              } catch (mErr: any) {
+                 console.error("[MSTOCK] Error fetching live future quotes API:", mErr.message);
+                 if (mErr.response && mErr.response.data) {
+                     console.error("[MSTOCK FUT] Error Details:", JSON.stringify(mErr.response.data));
+                 }
               }
           }
       }
