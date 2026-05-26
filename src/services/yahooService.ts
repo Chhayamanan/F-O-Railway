@@ -27,11 +27,37 @@ export class YahooService {
     }
   }
 
+  static async get5MinData(symbol: string, daysBack: number = 60) {
+    const ticker = symbol.endsWith('.NS') || symbol.startsWith('^') ? symbol : `${symbol}.NS`;
+    const startDate = new Date();
+    // Yahoo Finance only allows max 60 days for 5m interval
+    startDate.setDate(startDate.getDate() - Math.min(daysBack, 60));
+    
+    try {
+        const chartData = await yahooFinance.chart(ticker, {
+            period1: startDate,
+            period2: new Date(),
+            interval: "5m"
+        });
+        return (chartData.quotes || []).map((q: any) => ({
+            date: q.date,
+            open: q.open || 0,
+            high: q.high || 0,
+            low: q.low || 0,
+            close: q.close || 0,
+            volume: q.volume || 0
+        }));
+    } catch (e: any) {
+        console.error(`[YAHOO] 5-minute historical fetch failed for ${ticker}:`, e.message);
+        return [];
+    }
+  }
+
   static async getCurrentPrices(symbols: string[]) {
     try {
       const results: Record<string, any> = {};
       
-      const CHUNK_SIZE = 50; 
+      const CHUNK_SIZE = 250; 
       for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
          const chunk = symbols.slice(i, i + CHUNK_SIZE).map(s => s.endsWith('.NS') ? s : s + '.NS');
          let attempt = 0;
@@ -52,11 +78,11 @@ export class YahooService {
                 console.error(`[YAHOO] Error fetching chunk of size ${chunk.length} (Attempt ${attempt}): ${chunkErr.message}`);
                 if (attempt >= 3) break;
                 // Wait briefly before retrying
-                await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
              }
          }
          // Short pause between chunks to respect Yahoo Finance rate limits
-         await new Promise(resolve => setTimeout(resolve, 1000));
+         await new Promise(resolve => setTimeout(resolve, 300));
       }
       return results;
     } catch (e: any) {
