@@ -1,9 +1,8 @@
 import { MstockService } from './mstockService';
 import yahooFinanceDefault from 'yahoo-finance2';
 
-const yahooFinance = typeof yahooFinanceDefault === 'function' 
-  ? new (yahooFinanceDefault as any)() 
-  : (yahooFinanceDefault as any);
+const YahooFinanceClass = (yahooFinanceDefault as any).default || yahooFinanceDefault;
+const yahooFinance = typeof YahooFinanceClass === 'function' ? new YahooFinanceClass() : YahooFinanceClass;
 
 export class YahooService {
   static async get180DayData(symbol: string) {

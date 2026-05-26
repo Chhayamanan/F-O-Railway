@@ -221,8 +221,11 @@ export class MstockService {
                       }
                   }
               }
-          } catch (mErr) {
-             console.error("[MSTOCK] Error fetching live quotes API:", (mErr as any).message);
+          } catch (mErr: any) {
+             console.error("[MSTOCK] Error fetching live quotes API:", mErr.message);
+             if (mErr.response && mErr.response.data) {
+                 console.error("[MSTOCK] Error Details:", JSON.stringify(mErr.response.data));
+             }
           }
       }
 
