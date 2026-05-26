@@ -199,6 +199,22 @@ async function startServer() {
     }
   });
 
+  app.get("/api/radar5m/download-baseline", (req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const filePath = path.join(process.cwd(), 'volume_baseline_report.json');
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).send('Baseline report not found. Please initialize first.');
+      }
+      res.setHeader('Content-Disposition', `attachment; filename="volume_baseline_report.json"`);
+      res.setHeader('Content-Type', 'application/json');
+      res.sendFile(filePath);
+    } catch(e: any) {
+      res.status(500).send(e.message);
+    }
+  });
+
   // ======== MSTOCK API ========
   app.post("/api/mstock/login", async (req, res) => {
     try {

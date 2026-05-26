@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Play, Square, Settings, RefreshCw, Clock } from 'lucide-react';
+import { Activity, Play, Square, Settings, RefreshCw, Clock, Download } from 'lucide-react';
 
 export default function Radar5mTab() {
   const [status, setStatus] = useState<any>(null);
@@ -97,6 +97,15 @@ export default function Radar5mTab() {
                       className="bg-transparent text-emerald-400 font-mono text-sm w-20 text-right outline-none"
                    />
                </div>
+               {status.hasBaselines && (
+                   <a 
+                      href="/api/radar5m/download-baseline"
+                      download
+                      className="px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
+                   >
+                       <Download size={16} /> <span className="hidden sm:inline">Baseline</span>
+                   </a>
+               )}
                <button 
                   onClick={toggleScan}
                   className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-all ${status.isRunning ? 'bg-rose-950/50 hover:bg-rose-900 text-rose-400 border border-rose-900' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'}`}
