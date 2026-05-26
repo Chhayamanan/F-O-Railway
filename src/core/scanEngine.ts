@@ -83,23 +83,12 @@ export class ScanEngine {
          const live = liveData[plainSymbol];
          if (!live) continue;
 
-         // 1. Unified Price Resolver (Checks common broker naming conventions)
-         const spotPrice = Number(live.price ?? (live as any).ltp ?? (live as any).close ?? (live as any).c ?? (live as any).open ?? 0);
+         const spotPrice = live.price;
          if (spotPrice === 0) continue;
 
-         // 2. Safe Volume Resolver 
-         // If volume fields are zero or dropped at night, look for alternative keys or fallback to 1 to bypass the 0.0x anomaly during testing
-         const latestVolume = Number(
-           live.volume ?? 
-           (live as any).v ?? 
-           (live as any).vol ?? 
-           (live as any).vtt ?? 
-           (live as any).volumeTraded ?? 
-           (live as any).traded_volume ?? 
-           0
-         );
+         const latestVolume = live.volume;
 
-         const spotPrevClose = Number(live.prevClose ?? (live as any).close ?? (live as any).c ?? spotPrice);
+         const spotPrevClose = live.prevClose;
          const changePct = spotPrevClose > 0 ? ((spotPrice - spotPrevClose) / spotPrevClose) * 100 : 0;
 
          // 3. Smart Testing Multiplier
