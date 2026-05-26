@@ -86,7 +86,14 @@ export class ScanEngine {
          const spotPrice = live.price;
          if (spotPrice === 0) continue;
 
-         const latestVolume = live.volume;
+         const latestVolume = Number(
+           live.volume ?? 
+           (live as any).v ?? 
+           (live as any).vol ?? 
+           (live as any).traded_quantity ?? 
+           (live as any).volume_traded ?? 
+           0
+         );
 
          const spotPrevClose = live.prevClose;
          const changePct = spotPrevClose > 0 ? ((spotPrice - spotPrevClose) / spotPrevClose) * 100 : 0;
