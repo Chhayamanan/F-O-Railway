@@ -34,19 +34,29 @@ export class YahooService {
       const CHUNK_SIZE = 250; 
       for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
          const chunk = symbols.slice(i, i + CHUNK_SIZE).map(s => s.endsWith('.NS') ? s : s + '.NS');
-         try {
-            const data = await yahooFinance.quote(chunk) as any[];
-            for (const item of data) {
-               const cleanSym = item.symbol.replace('.NS', '');
-               results[cleanSym] = {
-                  price: item.regularMarketPrice || 0,
-                  volume: item.regularMarketVolume || 0,
-                  prevClose: item.regularMarketPreviousClose || 0
-               };
-            }
-         } catch (chunkErr: any) {
-            console.error(`[YAHOO] Error fetching chunk of size ${chunk.length}: ${chunkErr.message}`);
+         let attempt = 0;
+         while (attempt < 3) {
+             try {
+                const data = await yahooFinance.quote(chunk) as any[];
+                for (const item of data) {
+                   const cleanSym = item.symbol.replace('.NS', '');
+                   results[cleanSym] = {
+                      price: item.regularMarketPrice || 0,
+                      volume: item.regularMarketVolume || 0,
+                      prevClose: item.regularMarketPreviousClose || 0
+                   };
+                }
+                break; // Break the retry loop
+             } catch (chunkErr: any) {
+                attempt++;
+                console.error(`[YAHOO] Error fetching chunk of size ${chunk.length} (Attempt ${attempt}): ${chunkErr.message}`);
+                if (attempt >= 3) break;
+                // Wait briefly before retrying
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+             }
          }
+         // Short pause between chunks to respect Yahoo Finance rate limits
+         await new Promise(resolve => setTimeout(resolve, 300));
       }
       return results;
     } catch (e: any) {
