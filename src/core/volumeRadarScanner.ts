@@ -1,11 +1,10 @@
 import { INTRADAY_STOCKS } from '../services/marketDataService';
 import { MstockService } from '../services/mstockService';
-import { YahooService } from '../services/yahooService';
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 
-// Token is already provided for the every stocks as requested by the user
+// ─── Token Map ────────────────────────────────────────────────────────────────
 export const INTRADAY_TOKEN_MAP: Record<string, string> = {
     "SETFNIF50": "10176",
     "MANORAMA": "10227",
@@ -26,200 +25,181 @@ export const INTRADAY_TOKEN_MAP: Record<string, string> = {
     "ACC": "22"
 };
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 export interface VolumeRadarItem {
     symbol: string;
     ltp: number;
-    avg5mVol400: number;
-    latest5mVol: number;
+    avgVol: number;
+    currentVol: number;
+    multiplierHit: number;   // how many times the average was exceeded
     timestamp: number;
 }
 
-// Structure for your downloadable baseline JSON file
-export interface BaselineExportItem {
-    "Sr Number": number;
-    "Stock Name/Symbol": string;
-    "400 Average volume": number;
+export interface BaselineItem {
+    symbol: string;
+    avgVol: number;
 }
 
+// ─── Scanner ──────────────────────────────────────────────────────────────────
 export class VolumeRadarScanner {
-    public static isRunning = false;
+    public static isRunning    = false;
     public static timeoutId: any = null;
-    public static avg5mVolumes: Record<string, number> = {};
-    public static lastCumulativeVolumes: Record<string, number> = {};
-    public static lastPrices: Record<string, number> = {};
-    public static radarResults: VolumeRadarItem[] = [];
-    public static multiplier: number = 10;
-    public static lastScanTime: number = 0;
+    public static multiplier   = 10;
 
-    /**
-     * STEP 1: Manual Baseline Initialization (Run once daily)
-     * Fetches historical 5m data from Yahoo Finance to calculate the 400-period average volume baseline.
-     */
-    public static async initializeHistoricalAverages() {
-        console.log("[RADAR] Fetching 400-period 5m historical baselines using Yahoo Finance...");
-        let loadedCount = 0;
-        const exportData: BaselineExportItem[] = [];
-        const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+    // symbol → average 5m volume (populated once per day)
+    public static avgVolumes: Record<string, number> = {};
+
+    // live radar results
+    public static radarResults: VolumeRadarItem[] = [];
+
+    // ── STEP 1: Build baselines from Yahoo (run once manually each morning) ──
+    public static async initializeBaselines() {
+        console.log("[BASELINE] Fetching last-week 5m data from Yahoo Finance...");
+
+        const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+        const saved: BaselineItem[] = [];
 
         for (const sym of INTRADAY_STOCKS) {
+            const ticker = sym.endsWith('.NS') ? sym : `${sym}.NS`;
             const cleanSym = sym.replace('.NS', '');
+
             try {
-                // Yahoo finance limits range depending on interval. For 5m, maximum range is 60 days
-                const history = await YahooService.get5MinData(sym, 14); 
-                if (Array.isArray(history) && history.length > 0) {
-                    // Filter out any candles where volume is NaN, null, or undefined
-                    const validHistory = history.filter((curr: any) => curr && curr.volume !== null && !isNaN(curr.volume));
-                    
-                    const last400 = validHistory.slice(-400);
+                // Yahoo supports 5m data up to 60 days; '5d' gives last week cleanly
+                const url = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=5m&range=5d`;
+                const res = await axios.get(url, {
+                    headers: { 'User-Agent': 'Mozilla/5.0' },
+                    timeout: 10000
+                });
 
-                    if (last400.length > 0) {
-                        const sum = last400.reduce((acc: number, curr: any) => acc + (curr.volume || 0), 0);
-                        const avg = Math.round(sum / last400.length);
-                        
-                        this.avg5mVolumes[cleanSym] = avg;
-                        loadedCount++;
-
-                        // Push strictly formatted structure for the JSON export
-                        exportData.push({
-                            "Sr Number": loadedCount,
-                            "Stock Name/Symbol": cleanSym,
-                            "400 Average volume": avg
-                        });
-                    }
+                const result = res.data?.chart?.result?.[0];
+                if (!result?.timestamp) {
+                    console.warn(`[BASELINE] No data returned for ${cleanSym}`);
+                    continue;
                 }
+
+                const volumes: number[] = result.indicators.quote[0].volume
+                    .filter((v: any) => v !== null && !isNaN(v) && v > 0);
+
+                if (volumes.length === 0) {
+                    console.warn(`[BASELINE] Empty volume array for ${cleanSym}`);
+                    continue;
+                }
+
+                const avg = Math.round(volumes.reduce((a, b) => a + b, 0) / volumes.length);
+                this.avgVolumes[cleanSym] = avg;
+                saved.push({ symbol: cleanSym, avgVol: avg });
+
+                console.log(`[BASELINE] ${cleanSym} → avg vol: ${avg} (from ${volumes.length} candles)`);
             } catch (err: any) {
-                 console.error(`[RADAR-CATCH] ${cleanSym} threw an error:`, err.message || err);
+                console.error(`[BASELINE] Failed for ${cleanSym}:`, err.message);
             }
-            await delay(1000); // Wait 1s between stocks
+
+            await delay(1200); // polite rate limit
         }
-        console.log(`[RADAR] Successfully derived baselines for ${loadedCount}/${INTRADAY_STOCKS.length} stocks.`);
-        
-        // Save the downloadable JSON baseline report (overwrites previous runs)
-        if (loadedCount > 0) {
-            this.exportBaselineJson(exportData);
-        } else {
-            console.warn("[RADAR] Warning: 0 baselines loaded, skipping JSON overwrite to preserve previous data.");
-        }
+
+        console.log(`[BASELINE] Done. ${saved.length}/${INTRADAY_STOCKS.length} stocks loaded.`);
+        this.saveBaselines(saved);
     }
 
-    /**
-     * Generates and writes the downloadable snapshot file to the disk.
-     */
-    private static exportBaselineJson(data: BaselineExportItem[]) {
+    // ── Save / Load baselines to disk ─────────────────────────────────────────
+    private static saveBaselines(data: BaselineItem[]) {
         try {
             const filePath = path.join(process.cwd(), 'volume_baseline_report.json');
-            
-            // JSON.stringify formatting generates a clean, readable text structure
-            fs.writeFileSync(filePath, JSON.stringify(data, null, 4), 'utf-8');
-            console.log(`[EXPORT] Downloadable report successfully updated at: ${filePath}`);
+            fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+            console.log(`[BASELINE] Saved to ${filePath}`);
         } catch (err) {
-            console.error("[EXPORT] Failed to write baseline report file:", err);
+            console.error("[BASELINE] Save failed:", err);
         }
     }
 
-    /**
-     * Loads baselines from the local JSON report if it exists.
-     */
-    public static loadBaselinesFromFile(): boolean {
+    public static loadBaselines(): boolean {
         try {
             const filePath = path.join(process.cwd(), 'volume_baseline_report.json');
-            if (fs.existsSync(filePath)) {
-                console.log(`[RADAR] Reading baselines from ${filePath}...`);
-                const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-                let count = 0;
-                for (const item of data) {
-                    if (item["Stock Name/Symbol"] && typeof item["400 Average volume"] === 'number') {
-                        this.avg5mVolumes[item["Stock Name/Symbol"]] = item["400 Average volume"];
-                        count++;
-                    }
+            if (!fs.existsSync(filePath)) return false;
+
+            const data: BaselineItem[] = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            let count = 0;
+            for (const item of data) {
+                if (item.symbol && typeof item.avgVol === 'number') {
+                    this.avgVolumes[item.symbol] = item.avgVol;
+                    count++;
                 }
-                console.log(`[RADAR] Loaded ${count} baselines from file.`);
-                return count > 0;
             }
+            console.log(`[BASELINE] Loaded ${count} baselines from file.`);
+            return count > 0;
         } catch (err) {
-            console.error("[RADAR] Failed to load baselines from file:", err);
+            console.error("[BASELINE] Load failed:", err);
+            return false;
         }
-        return false;
     }
 
-    /**
-     * Mathematically builds dynamic strings targeting closed time boxes 
-     * Example: Running code at 09:28:40 targets fromdate: "09:20" -> todate: "09:25"
-     */
-    private static getPast5MinWindow(): { fromDateStr: string; toDateStr: string } {
+    // ── STEP 2: Fetch last closed 5m candle from MStock ──────────────────────
+    private static getLastClosed5mWindow(): { fromdate: string; todate: string } {
         const now = new Date();
 
-        // 1. Force add 5 hours and 30 minutes to get the absolute Indian Standard Time (IST)
-        const IST_OFFSET = 5.5 * 60 * 60 * 1000; 
-        const istTime = new Date(now.getTime() + IST_OFFSET);
+        // Convert to IST (UTC+5:30)
+        const istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
+        const ist   = new Date(istMs);
 
-        // 2. Drop down to the start of the current live 5-minute block
-        const currentBlockMin = Math.floor(istTime.getUTCMinutes() / 5) * 5;
-        
-        const baseTargetTime = new Date(istTime);
-        baseTargetTime.setUTCMinutes(currentBlockMin, 0, 0); 
-        
-        // 3. APPLY THE LOOK-BACK SHIFT
-        // Instead of querying the candle that just ended, look back one full candle frame
-        // This allows the broker's historical engine time to process and write the array blocks.
-        const toDate = new Date(baseTargetTime);
-        toDate.setUTCMinutes(toDate.getUTCMinutes() - 5); // Shift end target back by 5 mins
+        // Floor to current 5m block, then go back one full block (last closed candle)
+        const flooredMin = Math.floor(ist.getUTCMinutes() / 5) * 5;
+        const blockEnd   = new Date(ist);
+        blockEnd.setUTCMinutes(flooredMin, 0, 0);
 
-        const fromDate = new Date(toDate);
-        fromDate.setUTCMinutes(fromDate.getUTCMinutes() - 5); // Shift start target back by 5 mins
+        const toDate   = new Date(blockEnd.getTime() - 5 * 60 * 1000);   // end of last candle
+        const fromDate = new Date(toDate.getTime()   - 5 * 60 * 1000);   // start of last candle
 
-        // 4. Format payload string precisely to 'YYYY-MM-DD HH:mm'
-        const formatPayload = (d: Date) => {
-            const y = d.getUTCFullYear();
-            const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-            const dayStr = String(d.getUTCDate()).padStart(2, '0');
-            const h = String(d.getUTCHours()).padStart(2, '0');
-            const mn = String(d.getUTCMinutes()).padStart(2, '0');
-            return `${y}-${m}-${dayStr} ${h}:${mn}`;
+        const fmt = (d: Date) => {
+            const Y  = d.getUTCFullYear();
+            const M  = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const D  = String(d.getUTCDate()).padStart(2, '0');
+            const h  = String(d.getUTCHours()).padStart(2, '0');
+            const m  = String(d.getUTCMinutes()).padStart(2, '0');
+            return `${Y}-${M}-${D} ${h}:${m}`;
         };
 
-        return {
-            fromDateStr: formatPayload(fromDate),
-            toDateStr: formatPayload(toDate)
-        };
+        return { fromdate: fmt(fromDate), todate: fmt(toDate) };
     }
 
-    /**
-     * CORE RUN ENGINE: Runs everywhere (Live or After-Hours) pulling direct data intervals
-     */
+    // ── STEP 3: One full scan round across all stocks ─────────────────────────
     private static async runScanRound() {
-        let sessionToken = null;
+        // Auth
+        let token: string;
         try {
-            sessionToken = await MstockService.getMstockJwtToken();
-        } catch (e: any) {
-            console.error("[RADAR] MStock Auth Failed. Skipping scan round. Reason:", e.message);
+            token = await MstockService.getMstockJwtToken();
+        } catch (err: any) {
+            console.error("[RADAR] Auth failed:", err.message);
             return;
         }
 
         const apiKey = process.env.MSTOCK_API_KEY;
         if (!apiKey) {
-            console.error("[RADAR] MSTOCK_API_KEY missing. Skipping scan round.");
+            console.error("[RADAR] MSTOCK_API_KEY not set.");
             return;
         }
 
-        const { fromDateStr, toDateStr } = this.getPast5MinWindow();
-        console.log(`[SCANNER] Target timeframe processing blocks: ${fromDateStr} to ${toDateStr}`);
+        const { fromdate, todate } = this.getLastClosed5mWindow();
+        console.log(`[RADAR] Scanning window: ${fromdate} → ${todate}`);
 
-        const newRadarResults = [...this.radarResults];
-        const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+        const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+        const freshResults: VolumeRadarItem[] = [...this.radarResults];
 
         for (const sym of INTRADAY_STOCKS) {
             const cleanSym = sym.replace('.NS', '');
-            const token = INTRADAY_TOKEN_MAP[cleanSym] || MstockService.getEqTokenOnlySync(cleanSym);
-            if (!token) continue;
+            const symboltoken = INTRADAY_TOKEN_MAP[cleanSym] || MstockService.getEqTokenOnlySync(cleanSym);
+
+            if (!symboltoken) {
+                console.warn(`[RADAR] No token for ${cleanSym}, skipping.`);
+                continue;
+            }
 
             try {
                 const response = await axios({
-                    method: 'get',
+                    method: 'POST',                          // POST avoids GET-body stripping
                     url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
                     headers: {
                         'X-Mirae-Version': '1',
-                        'Authorization': `Bearer ${sessionToken}`,
+                        'Authorization': `Bearer ${token}`,
                         'X-PrivateKey': apiKey,
                         'Content-Type': 'application/json',
                         'X-ClientLocalIP': '127.0.0.1',
@@ -227,138 +207,119 @@ export class VolumeRadarScanner {
                         'X-MACAddress': '00:00:00:00:00:00'
                     },
                     data: {
-                        exchange: '1',
-                        symboltoken: token,
-                        interval: '5minute',
-                        fromdate: fromDateStr,
-                        todate: toDateStr
+                        exchange: 'NSE',                     // string name, not numeric
+                        symboltoken,
+                        interval: 'FIVE_MINUTE',             // check MStock docs for exact value
+                        fromdate,
+                        todate
                     }
                 });
-                
-                // 1. Loosen the type restriction to check for both boolean true or string "true"
-                const isStatusSuccess = response.data?.status === true || response.data?.status === "true";
 
-                if (isStatusSuccess && response.data?.data) {
-                    const candles = response.data.data.candles;
-                    
-                    // Check if candles array exists and has elements
-                    if (Array.isArray(candles) && candles.length > 0) {
-                        const targetCandle = candles[candles.length - 1]; // Pull the targeted closed window block
-                        
-                        console.log(`[LIVE-CHECK] ${cleanSym} Data Matrix -> Time: ${targetCandle[0]}, Open: ${targetCandle[1]}, Close/LTP: ${targetCandle[4]}, 5mVolume: ${targetCandle[5]}`);
-                        
-                        const recent5mVol = Number(targetCandle[5]) || 0; 
-                        const ltp = Number(targetCandle[4]) || 0;         
-                        const openPrice = Number(targetCandle[1]) || 0;
-
-                        const avg400 = this.avg5mVolumes[cleanSym] || 0;
-                        const targetVolume = avg400 * this.multiplier;
-
-                        const isPositiveChange = ltp > openPrice;
-
-                        console.log(`[RADAR-MATH] ${cleanSym} -> 5mVol: ${recent5mVol}, Threshold: ${targetVolume} (Avg400: ${avg400})`);
-
-                        if (avg400 > 0 && recent5mVol > targetVolume) {
-                            console.log(`[ALERT] 🔥 breakout anomaly spotted on ${cleanSym}! Volume breached limit.`);
-                            this.updateRadarList(newRadarResults, cleanSym, ltp, avg400, recent5mVol);
-
-                            // Auto Trade execution block
-                            if (isPositiveChange) {
-                                const targetPrice = ltp * 1.04;
-                                const slPrice = ltp * 0.98;
-                                MstockService.placeEquityBracketOrder(sym, 1, ltp, slPrice, targetPrice)
-                                   .then(orderId => console.log(`[AUTO-TRADE] Placed BO for ${sym} (ID: ${orderId})`))
-                                   .catch(err => console.error(`[AUTO-TRADE] Failed BO for ${sym}:`, err.message));
-                            }
-                        }
-                    } else {
-                        console.log(`[RADAR-EMPTY] ${cleanSym} query worked, but returned no candles [] for this specific time box.`);
-                    }
-                } else {
-                    console.error(`[RADAR-ERROR] MStock completely rejected ${cleanSym}. Raw Response Data:`, JSON.stringify(response.data));
+                const ok = response.data?.status === true || response.data?.status === "true";
+                if (!ok) {
+                    console.error(`[RADAR] MStock rejected ${cleanSym}:`, JSON.stringify(response.data));
+                    continue;
                 }
+
+                const candles = response.data?.data?.candles;
+                if (!Array.isArray(candles) || candles.length === 0) {
+                    console.log(`[RADAR] No candles for ${cleanSym} in this window.`);
+                    continue;
+                }
+
+                // Candle format: [timestamp, open, high, low, close, volume]
+                const latest  = candles[candles.length - 1];
+                const ltp     = Number(latest[4]) || 0;
+                const vol5m   = Number(latest[5]) || 0;
+                const avgVol  = this.avgVolumes[cleanSym] || 0;
+                const threshold = avgVol * this.multiplier;
+
+                console.log(`[RADAR] ${cleanSym} | vol: ${vol5m} | threshold: ${threshold} (avg: ${avgVol} × ${this.multiplier})`);
+
+                if (avgVol > 0 && vol5m > threshold) {
+                    const multiplierHit = parseFloat((vol5m / avgVol).toFixed(2));
+                    console.log(`[ALERT] 🔥 ${cleanSym} volume spike! ${vol5m} > ${threshold} (${multiplierHit}x avg)`);
+                    this.upsertRadar(freshResults, cleanSym, ltp, avgVol, vol5m, multiplierHit);
+                }
+
             } catch (err: any) {
-                console.error(`[RADAR-CATCH] ${cleanSym} threw an error:`, err.message || err);
+                console.error(`[RADAR] Error on ${cleanSym}:`, err.response?.data || err.message);
             }
-            await delay(100);
+
+            await delay(150); // throttle between stocks
         }
 
-        this.radarResults = newRadarResults;
-        console.log(`[RADAR] Execution complete. Current matching anomaly alerts count: ${this.radarResults.length}`);
+        this.radarResults = freshResults;
+        console.log(`[RADAR] Scan complete. Alerts: ${this.radarResults.length}`);
     }
 
-    /**
-     * Helper to insert or update entries in the radar collection
-     */
-    private static updateRadarList(resultsArray: VolumeRadarItem[], cleanSym: string, ltp: number, avg400: number, recentVol: number) {
-        const existingIdx = resultsArray.findIndex(r => r.symbol === cleanSym);
-        const radarItem: VolumeRadarItem = {
-            symbol: cleanSym,
-            ltp: ltp,
-            avg5mVol400: avg400,
-            latest5mVol: recentVol,
-            timestamp: Date.now()
-        };
-
-        if (existingIdx !== -1) {
-            resultsArray[existingIdx] = radarItem;
-        } else {
-            resultsArray.push(radarItem);
-        }
+    // ── Upsert helper ─────────────────────────────────────────────────────────
+    private static upsertRadar(
+        list: VolumeRadarItem[],
+        symbol: string,
+        ltp: number,
+        avgVol: number,
+        currentVol: number,
+        multiplierHit: number
+    ) {
+        const item: VolumeRadarItem = { symbol, ltp, avgVol, currentVol, multiplierHit, timestamp: Date.now() };
+        const idx = list.findIndex(r => r.symbol === symbol);
+        if (idx !== -1) list[idx] = item;
+        else list.push(item);
     }
 
-    /**
-     * Loops indefinitely every 5 minutes synchronizing directly onto closed wall-clock blocks
-     */
-    private static scheduleNextScan() {
+    // ── STEP 4: Schedule to run every 5 minutes aligned to clock ─────────────
+    private static scheduleNext() {
         if (!this.isRunning) return;
 
         const now = new Date();
-        const minutesToNextInterval = 5 - (now.getMinutes() % 5);
-        let msToNextInterval = (minutesToNextInterval * 60 * 1000) - (now.getSeconds() * 1000) - now.getMilliseconds();
-        
-        // 2-second extraction delay buffer ensures data aggregation has wrapped up cleanly inside MStock's cluster
-        msToNextInterval += 2000; 
+        const minsToNext = 5 - (now.getMinutes() % 5);
+        const msToNext   = (minsToNext * 60 * 1000)
+                         - (now.getSeconds() * 1000)
+                         - now.getMilliseconds()
+                         + 3000; // 3s buffer for MStock to finalize the candle
 
-        console.log(`[SCHEDULER] Next precise tracking round scheduled in ${(msToNextInterval / 1000).toFixed(1)} seconds.`);
+        console.log(`[SCHEDULER] Next scan in ${(msToNext / 1000).toFixed(1)}s`);
 
         this.timeoutId = setTimeout(async () => {
             await this.runScanRound();
-            this.scheduleNextScan(); // Recurse loop configuration
-        }, msToNextInterval);
+            this.scheduleNext();
+        }, msToNext);
     }
 
-    /**
-     * External Control Interface
-     */
+    // ── Public controls ───────────────────────────────────────────────────────
     public static async start() {
-        if (this.isRunning) return;
-        if (Object.keys(this.avg5mVolumes).length === 0) {
-            const loaded = this.loadBaselinesFromFile();
-            if (!loaded) {
-                console.error("[RADAR] Run `initializeHistoricalAverages()` first.");
+        if (this.isRunning) {
+            console.log("[RADAR] Already running.");
+            return;
+        }
+
+        // Load baselines — fail loudly if not initialized
+        if (Object.keys(this.avgVolumes).length === 0) {
+            const ok = this.loadBaselines();
+            if (!ok) {
+                console.error("[RADAR] No baselines found. Run initializeBaselines() first.");
                 return;
             }
         }
 
         this.isRunning = true;
-        console.log("[RADAR] Core loop activated.");
-        
-        // Fire off first pass immediately upon activation, then start clock-aligned loop schedules
+        console.log("[RADAR] Starting. Running first scan immediately...");
         await this.runScanRound();
-        this.scheduleNextScan();
+        this.scheduleNext();
     }
 
     public static stop() {
+        this.isRunning = false;
         if (this.timeoutId) {
             clearTimeout(this.timeoutId);
             this.timeoutId = null;
         }
-        this.isRunning = false;
-        console.log("[RADAR] Engine halted.");
+        console.log("[RADAR] Stopped.");
     }
 
     public static setMultiplier(val: number) {
         this.multiplier = val;
+        console.log(`[RADAR] Multiplier set to ${val}`);
     }
 }
