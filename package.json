@@ -9,8 +9,7 @@
     "start": "NODE_ENV=production node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit",
-    "fetch-history": "tsx scripts/fetchHistorical.ts"
+    "lint": "tsc --noEmit"
   },
   "engines": {
     "node": "22.x"

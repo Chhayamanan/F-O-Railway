@@ -54,34 +54,106 @@ export class VolumeRadarScanner {
 
     // ── STEP 1: Build baselines from Yahoo (run once manually each morning) ──
     public static async initializeBaselines() {
-        console.log("[BASELINE] Fetching last-week 5m data from Yahoo Finance...");
+        console.log("[BASELINE] Fetching 5m baselines from MStock...");
+
+        let token: string;
+        try {
+            token = await MstockService.getMstockJwtToken();
+        } catch (err: any) {
+            console.error("[BASELINE] Auth failed:", err.message);
+            return;
+        }
+
+        const apiKey = process.env.MSTOCK_API_KEY;
+        if (!apiKey) {
+            console.error("[BASELINE] MSTOCK_API_KEY not set.");
+            return;
+        }
+
+        // Fetch container's public IP to satisfy MStock IP binding
+        let publicIp = '127.0.0.1';
+        try {
+            const ipRes = await axios.get('https://api.ipify.org?format=json');
+            if (ipRes.data && ipRes.data.ip) {
+                publicIp = ipRes.data.ip;
+                console.log(`[BASELINE] Detected public IP: ${publicIp}`);
+            }
+        } catch (e: any) {
+            console.warn("[BASELINE] Failed to fetch public IP, falling back to 127.0.0.1");
+        }
 
         const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
         const saved: BaselineItem[] = [];
 
+        // Build a window: last 7 calendar days → typically 5 trading days of 5m candles
+        const now   = new Date();
+        const istMs = now.getTime() + 5.5 * 60 * 60 * 1000;
+        const ist   = new Date(istMs);
+
+        const fmt = (d: Date) => {
+            const Y = d.getUTCFullYear();
+            const M = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const D = String(d.getUTCDate()).padStart(2, '0');
+            return `${Y}-${M}-${D} 09:15`;
+        };
+
+        const todate   = fmt(ist);
+        const fromDate = new Date(ist.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const fromdate = fmt(fromDate);
+
+        console.log(`[BASELINE] Window: ${fromdate} → ${todate}`);
+
         for (const sym of INTRADAY_STOCKS) {
-            const ticker = sym.endsWith('.NS') ? sym : `${sym}.NS`;
-            const cleanSym = sym.replace('.NS', '');
+            const cleanSym    = sym.replace('.NS', '');
+            const symboltoken = INTRADAY_TOKEN_MAP[cleanSym]
+                             || MstockService.getEqTokenOnlySync(cleanSym);
+
+            if (!symboltoken) {
+                console.warn(`[BASELINE] No token for ${cleanSym}, skipping.`);
+                continue;
+            }
 
             try {
-                // Yahoo supports 5m data up to 60 days; '5d' gives last week cleanly
-                const url = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=5m&range=5d`;
-                const res = await axios.get(url, {
-                    headers: { 'User-Agent': 'Mozilla/5.0' },
-                    timeout: 10000
+                const response = await axios({
+                    method: 'POST',
+                    url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
+                    headers: {
+                        'X-Mirae-Version':  '1',
+                        'Authorization':    `Bearer ${token}`,
+                        'X-PrivateKey':     apiKey,
+                        'Content-Type':     'application/json',
+                        'X-ClientLocalIP':  '127.0.0.1',
+                        'X-ClientPublicIP': publicIp,
+                        'X-MACAddress':     '00:00:00:00:00:00'
+                    },
+                    data: {
+                        exchange: 'NSE', // Keep this consistent
+                        symboltoken,
+                        interval: 'FIVE_MINUTE', // Keep this consistent
+                        fromdate,
+                        todate
+                    }
                 });
 
-                const result = res.data?.chart?.result?.[0];
-                if (!result?.timestamp) {
-                    console.warn(`[BASELINE] No data returned for ${cleanSym}`);
+                const ok = response.data?.status === true || response.data?.status === "true";
+                if (!ok) {
+                    console.warn(`[BASELINE] MStock rejected ${cleanSym}:`, JSON.stringify(response.data));
                     continue;
                 }
 
-                const volumes: number[] = result.indicators.quote[0].volume
-                    .filter((v: any) => v !== null && !isNaN(v) && v > 0);
+                const candles: any[][] = response.data?.data?.candles;
+                if (!Array.isArray(candles) || candles.length === 0) {
+                    console.warn(`[BASELINE] No candles for ${cleanSym}`);
+                    continue;
+                }
+
+                // candle: [timestamp, open, high, low, close, volume]
+                const volumes = candles
+                    .map(c => Number(c[5]))
+                    .filter(v => !isNaN(v) && v > 0);
 
                 if (volumes.length === 0) {
-                    console.warn(`[BASELINE] Empty volume array for ${cleanSym}`);
+                    console.warn(`[BASELINE] Empty volumes for ${cleanSym}`);
                     continue;
                 }
 
@@ -89,12 +161,13 @@ export class VolumeRadarScanner {
                 this.avgVolumes[cleanSym] = avg;
                 saved.push({ symbol: cleanSym, avgVol: avg });
 
-                console.log(`[BASELINE] ${cleanSym} → avg vol: ${avg} (from ${volumes.length} candles)`);
+                console.log(`[BASELINE] ${cleanSym} → avg vol: ${avg} (${volumes.length} candles)`);
+
             } catch (err: any) {
-                console.error(`[BASELINE] Failed for ${cleanSym}:`, err.message);
+                console.error(`[BASELINE] Failed for ${cleanSym}:`, err.response?.data || err.message);
             }
 
-            await delay(1200); // polite rate limit
+            await delay(300); // MStock is your own broker — tighter delay is fine
         }
 
         console.log(`[BASELINE] Done. ${saved.length}/${INTRADAY_STOCKS.length} stocks loaded.`);
@@ -178,6 +251,17 @@ export class VolumeRadarScanner {
             return;
         }
 
+        // Fetch container's public IP to satisfy MStock IP binding
+        let publicIp = '127.0.0.1';
+        try {
+            const ipRes = await axios.get('https://api.ipify.org?format=json');
+            if (ipRes.data && ipRes.data.ip) {
+                publicIp = ipRes.data.ip;
+            }
+        } catch (e: any) {
+            // Ignore silently
+        }
+
         const { fromdate, todate } = this.getLastClosed5mWindow();
         console.log(`[RADAR] Scanning window: ${fromdate} → ${todate}`);
 
@@ -203,7 +287,7 @@ export class VolumeRadarScanner {
                         'X-PrivateKey': apiKey,
                         'Content-Type': 'application/json',
                         'X-ClientLocalIP': '127.0.0.1',
-                        'X-ClientPublicIP': '127.0.0.1',
+                        'X-ClientPublicIP': publicIp,
                         'X-MACAddress': '00:00:00:00:00:00'
                     },
                     data: {
