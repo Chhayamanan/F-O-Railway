@@ -1,4 +1,4 @@
-import { RAW_UNIVERSE } from '../services/marketDataService';
+import { INTRADAY_STOCKS } from '../services/marketDataService';
 import { MstockService } from '../services/mstockService';
 import fs from 'fs';
 import path from 'path';
@@ -64,7 +64,7 @@ export class VolumeRadarScanner {
         const fromdateStr = formatDate(pastDate);
         const todateStr = formatDate(now);
 
-        for (const sym of RAW_UNIVERSE) {
+        for (const sym of INTRADAY_STOCKS) {
             const cleanSym = sym.replace('.NS', '');
             const token = MstockService.getEqTokenOnlySync(cleanSym);
 
@@ -120,7 +120,7 @@ export class VolumeRadarScanner {
             }
             await delay(100);
         }
-        console.log(`[RADAR] Successfully derived custom MStock averages for ${loadedCount}/${RAW_UNIVERSE.length} stocks.`);
+        console.log(`[RADAR] Successfully derived custom MStock averages for ${loadedCount}/${INTRADAY_STOCKS.length} stocks.`);
         
         // Save the downloadable JSON baseline report (overwrites previous runs)
         this.exportBaselineJson(exportData);
@@ -190,7 +190,7 @@ export class VolumeRadarScanner {
         const newRadarResults = [...this.radarResults];
         const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-        for (const sym of RAW_UNIVERSE) {
+        for (const sym of INTRADAY_STOCKS) {
             const cleanSym = sym.replace('.NS', '');
             const token = MstockService.getEqTokenOnlySync(cleanSym);
             if (!token) continue;
