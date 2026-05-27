@@ -143,31 +143,37 @@ export class VolumeRadarScanner {
      * Example: Running code at 09:28:40 targets fromdate: "09:20" -> todate: "09:25"
      */
     private static getPast5MinWindow(): { fromDateStr: string; toDateStr: string } {
-        // 1. Get the current system time (regardless of whether it's UTC or Local)
         const now = new Date();
 
-        // 2. Explicitly add 5 hours and 30 minutes (in milliseconds) to map to IST
+        // 1. Force add 5 hours and 30 minutes to get the absolute Indian Standard Time (IST)
         const IST_OFFSET = 5.5 * 60 * 60 * 1000; 
         const istTime = new Date(now.getTime() + IST_OFFSET);
 
-        // 3. Drop down to the start of the current completed 5-minute block
+        // 2. Drop down to the start of the current live 5-minute block
         const currentBlockMin = Math.floor(istTime.getUTCMinutes() / 5) * 5;
         
-        const toDate = new Date(istTime);
-        // Note: We use UTC methods here because we manually shifted the absolute timeline forward
-        toDate.setUTCMinutes(currentBlockMin, 0, 0); 
+        const baseTargetTime = new Date(istTime);
+        baseTargetTime.setUTCMinutes(currentBlockMin, 0, 0); 
         
-        const fromDate = new Date(toDate);
-        fromDate.setUTCMinutes(fromDate.getUTCMinutes() - 5); 
+        // 3. APPLY THE LOOK-BACK SHIFT
+        // Instead of querying the candle that just ended, look back one full candle frame
+        // This allows the broker's historical engine time to process and write the array blocks.
+        const toDate = new Date(baseTargetTime);
+        toDate.setUTCMinutes(toDate.getUTCMinutes() - 5); // Shift end target back by 5 mins
 
-        // 4. Format strictly to 'YYYY-MM-DD HH:mm' expected by the MStock endpoint
+        const fromDate = new Date(toDate);
+        fromDate.setUTCMinutes(fromDate.getUTCMinutes() - 5); // Shift start target back by 5 mins
+
+        // 4. Format payload string with absolute seconds padding ':00'
         const formatPayload = (d: Date) => {
             const y = d.getUTCFullYear();
             const m = String(d.getUTCMonth() + 1).padStart(2, '0');
             const dayStr = String(d.getUTCDate()).padStart(2, '0');
             const h = String(d.getUTCHours()).padStart(2, '0');
             const mn = String(d.getUTCMinutes()).padStart(2, '0');
-            return `${y}-${m}-${dayStr} ${h}:${mn}`;
+            
+            // Appending ':00' ensures the broker's database engine parses the timestamp cleanly
+            return `${y}-${m}-${dayStr} ${h}:${mn}:00`;
         };
 
         return {
