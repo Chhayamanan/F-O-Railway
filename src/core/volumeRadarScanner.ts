@@ -241,6 +241,8 @@ export class VolumeRadarScanner {
                     if (Array.isArray(candles) && candles.length > 0) {
                         const targetCandle = candles[candles.length - 1]; // Pull the targeted closed window block
                         
+                        console.log(`[LIVE-CHECK] ${cleanSym} Data Matrix -> Time: ${targetCandle[0]}, Open: ${targetCandle[1]}, Close/LTP: ${targetCandle[4]}, 5mVolume: ${targetCandle[5]}`);
+                        
                         const recent5mVol = Number(targetCandle[5]) || 0; 
                         const ltp = Number(targetCandle[4]) || 0;         
                         const openPrice = Number(targetCandle[1]) || 0;
