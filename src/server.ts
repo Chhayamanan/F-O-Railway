@@ -162,6 +162,9 @@ async function startServer() {
 
   // ======== RADAR 5M API ========
   app.get("/api/radar5m/status", (req, res) => {
+    if (Object.keys(VolumeRadarScanner.avg5mVolumes).length === 0) {
+        VolumeRadarScanner.loadBaselinesFromFile();
+    }
     res.json({
         isRunning: VolumeRadarScanner.isRunning,
         lastScanTime: VolumeRadarScanner.lastScanTime,
