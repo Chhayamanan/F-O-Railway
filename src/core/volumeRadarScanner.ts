@@ -1,8 +1,17 @@
 import { INTRADAY_STOCKS } from '../services/marketDataService';
 import { MstockService } from '../services/mstockService';
 import { YahooService } from '../services/yahooService';
+import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
+
+// Token is already provided for the every stocks as requested by the user
+export const INTRADAY_TOKEN_MAP: Record<string, string> = {
+    "SETFNIF50": "10176",
+    "MANORAMA": "10227",
+    "SATIN": "10453",
+    "BHARTIARTL": "10604"
+};
 
 export interface VolumeRadarItem {
     symbol: string;
@@ -121,22 +130,55 @@ export class VolumeRadarScanner {
      * Example: Running code at 09:28:40 targets fromdate: "09:20" -> todate: "09:25"
      */
     private static getPast5MinWindow(): { fromDateStr: string; toDateStr: string } {
+        // 1. Get current system time
         const now = new Date();
-        const currentBlockMin = Math.floor(now.getMinutes() / 5) * 5;
+
+        // 2. Force conversion to Indian Standard Time (IST) strings using Intl
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Asia/Kolkata',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+
+        const parts = formatter.formatToParts(now);
+        const getValue = (type: string) => parts.find(p => p.type === type)!.value;
+
+        const yyyy = getValue('year');
+        const mm = getValue('month');
+        const dd = getValue('day');
+        const hh = parseInt(getValue('hour'));
+        const min = parseInt(getValue('minute'));
+
+        // 3. Construct a Date object locked into India's current clock time
+        const istDate = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd), hh, min, 0);
+
+        // 4. Drop down to the start of the completed 5-minute block
+        const currentBlockMin = Math.floor(istDate.getMinutes() / 5) * 5;
         
-        const toDate = new Date(now);
+        const toDate = new Date(istDate);
         toDate.setMinutes(currentBlockMin, 0, 0); 
         
         const fromDate = new Date(toDate);
         fromDate.setMinutes(fromDate.getMinutes() - 5); 
 
-        const format = (d: Date) => {
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        // 5. Format strictly to 'YYYY-MM-DD HH:mm' for MStock payload
+        const formatPayload = (d: Date) => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const dayStr = String(d.getDate()).padStart(2, '0');
+            const h = String(d.getHours()).padStart(2, '0');
+            const mn = String(d.getMinutes()).padStart(2, '0');
+            return `${y}-${m}-${dayStr} ${h}:${mn}`;
         };
 
         return {
-            fromDateStr: format(fromDate),
-            toDateStr: format(toDate)
+            fromDateStr: formatPayload(fromDate),
+            toDateStr: formatPayload(toDate)
         };
     }
 
@@ -166,11 +208,10 @@ export class VolumeRadarScanner {
 
         for (const sym of INTRADAY_STOCKS) {
             const cleanSym = sym.replace('.NS', '');
-            const token = MstockService.getEqTokenOnlySync(cleanSym);
+            const token = INTRADAY_TOKEN_MAP[cleanSym] || MstockService.getEqTokenOnlySync(cleanSym);
             if (!token) continue;
 
             try {
-                const axios = require('axios');
                 const response = await axios({
                     method: 'get',
                     url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
@@ -178,7 +219,10 @@ export class VolumeRadarScanner {
                         'X-Mirae-Version': '1',
                         'Authorization': `Bearer ${sessionToken}`,
                         'X-PrivateKey': apiKey,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-ClientLocalIP': '127.0.0.1',
+                        'X-ClientPublicIP': '127.0.0.1',
+                        'X-MACAddress': '00:00:00:00:00:00'
                     },
                     data: {
                         exchange: 'NSE',
@@ -188,7 +232,7 @@ export class VolumeRadarScanner {
                         todate: toDateStr
                     }
                 });
-
+                
                 if (response.data?.status === "true" && response.data?.data?.candles) {
                     const candles = response.data.data.candles;
                     if (candles && candles.length > 0) {
@@ -215,7 +259,7 @@ export class VolumeRadarScanner {
                         }
                     }
                 }
-            } catch (err) {
+            } catch (err: any) {
                 // Per ticker fallback container
             }
             await delay(100);
