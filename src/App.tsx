@@ -128,7 +128,7 @@ function App() {
   const handleStopLoss = async (symbol: string, quantity: number, avgPrice: number, type: string, symbolToken?: string, tradingSymbol?: string) => {
     try {
       const stopLossPrice = avgPrice * 0.95; // 5% stop loss
-      addLog(`Sending Execute Stop Loss for ${symbol} @ ₹${stopLossPrice.toFixed(2)}...`);
+      addLog(`Sending Execute Stop Loss for ${symbol} @ ₹${Number(stopLossPrice || 0).toFixed(2)}...`);
       const res = await fetch('/api/trade/stop-loss', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -348,14 +348,14 @@ function App() {
                               </span>
                             </div>
                             <div className="text-sm text-zinc-400 grid grid-cols-2 gap-x-6 gap-y-1">
-                               <div>Avg Buy Price: <span className="text-white">₹{item.avgPrice.toFixed(2)}</span></div>
-                               <div>Current Price: <span className="text-white">₹{item.currentPrice.toFixed(2)}</span></div>
+                               <div>Avg Buy Price: <span className="text-white">₹{Number(item.avgPrice || 0).toFixed(2)}</span></div>
+                               <div>Current Price: <span className="text-white">₹{Number(item.currentPrice || 0).toFixed(2)}</span></div>
                                <div>Qty: <span className="text-white">{item.qty}</span></div>
                                <div>Value: <span className="text-white">₹{item.value.toLocaleString()}</span></div>
                                
                                <div className="col-span-2 mt-2 pt-2 border-t border-rose-900/30">
                                   <div className="flex justify-between items-center text-rose-200">
-                                    <span>Calculated Stop Loss (5%): <span className="font-mono text-rose-400 text-lg font-bold">₹{(item.avgPrice * 0.95).toFixed(2)}</span></span>
+                                    <span>Calculated Stop Loss (5%): <span className="font-mono text-rose-400 text-lg font-bold">₹{Number(item.avgPrice * 0.95 || 0).toFixed(2)}</span></span>
                                   </div>
                                </div>
                             </div>
@@ -389,16 +389,16 @@ function App() {
                            <div className="flex items-baseline gap-3">
                              <span className="text-xl font-bold text-white">{item.symbol}</span>
                              <span className="text-emerald-400 font-mono flex items-center gap-1">
-                               <TrendingUp size={14} /> ₹{item.ltp.toFixed(2)}
+                               <TrendingUp size={14} /> ₹{Number(item.ltp || 0).toFixed(2)}
                              </span>
                              {item.spotPrice !== undefined && item.spotPrice !== item.ltp && (
                                <span className="text-xs text-zinc-400 font-mono self-center">
-                                 (Spot: ₹{item.spotPrice.toFixed(2)})
+                                 (Spot: ₹{Number(item.spotPrice || 0).toFixed(2)})
                                </span>
                              )}
                              {item.changePct !== undefined && (
                                <span className={`text-sm font-mono ${item.changePct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                 {item.changePct >= 0 ? '+' : ''}{item.changePct.toFixed(2)}%
+                                 {item.changePct >= 0 ? '+' : ''}{Number(item.changePct || 0).toFixed(2)}%
                                </span>
                              )}
                              {item.type === 'OPTIONS' && (
@@ -413,11 +413,11 @@ function App() {
                              )}
                            </div>
                            <div className="text-sm text-zinc-400 grid grid-cols-2 gap-x-6 gap-y-1">
-                              <div>180D High: <span className="text-white">₹{item.high180d.toFixed(2)}</span> {item.type !== 'OPTIONS' && item.type !== 'INTRADAY' ? <span className="text-xs text-zinc-500 ml-1">(Range: {item.low180d && item.low180d > 0 ? ((item.high180d - item.low180d) / item.low180d * 100).toFixed(1) : 0}%)</span> : null}</div>
+                              <div>180D High: <span className="text-white">₹{Number(item.high180d || 0).toFixed(2)}</span> {item.type !== 'OPTIONS' && item.type !== 'INTRADAY' ? <span className="text-xs text-zinc-500 ml-1">(Range: {item.low180d && item.low180d > 0 ? (Number((item.high180d - item.low180d) / item.low180d * 100) || 0).toFixed(1) : 0}%)</span> : null}</div>
                               <div className="flex items-center gap-2">
-                                Volume: <span className="text-white">{(item.latestVolume/1000).toFixed(1)}k</span> <span className="text-xs text-zinc-500">(Avg: {(item.avgVol180d/1000).toFixed(1)}k)</span>
+                                Volume: <span className="text-white">{Number((item.latestVolume || 0)/1000).toFixed(1)}k</span> <span className="text-xs text-zinc-500">(Avg: {Number((item.avgVol180d || 0)/1000).toFixed(1)}k)</span>
                                 {item.volMultiplier !== undefined && (
-                                   <span className="text-amber-400 bg-amber-900/30 px-1.5 rounded text-xs ml-1">{item.volMultiplier.toFixed(1)}x</span>
+                                   <span className="text-amber-400 bg-amber-900/30 px-1.5 rounded text-xs ml-1">{Number(item.volMultiplier || 0).toFixed(1)}x</span>
                                 )}
                               </div>
                               
@@ -514,21 +514,21 @@ function App() {
                                    )}
                                 </td>
                                 <td className="p-4 font-mono text-zinc-200">
-                                  ₹{item.ltp.toFixed(2)}
+                                  ₹{Number(item.ltp || 0).toFixed(2)}
                                   {item.changePct !== undefined && (
                                     <span className={`block text-[10px] ${item.changePct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                      {item.changePct >= 0 ? '+' : ''}{item.changePct.toFixed(2)}%
+                                      {item.changePct >= 0 ? '+' : ''}{Number(item.changePct || 0).toFixed(2)}%
                                     </span>
                                   )}
                                 </td>
-                                <td className="p-4 font-mono text-zinc-500">₹{item.high180d.toFixed(2)}</td>
+                                <td className="p-4 font-mono text-zinc-500">₹{Number(item.high180d || 0).toFixed(2)}</td>
                                 <td className={`p-4 font-mono ${item.latestVolume >= 2 * item.avgVol180d ? 'text-amber-400' : 'text-zinc-500'}`}>
-                                  {(item.latestVolume).toLocaleString()}
+                                  {(item.latestVolume || 0).toLocaleString()}
                                   {item.volMultiplier !== undefined && (
-                                     <span className="block text-[10px] text-amber-500">{item.volMultiplier.toFixed(1)}x avg</span>
+                                     <span className="block text-[10px] text-amber-500">{Number(item.volMultiplier || 0).toFixed(1)}x avg</span>
                                   )}
                                 </td>
-                                <td className="p-4 font-mono text-zinc-500">{(item.avgVol180d).toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+                                <td className="p-4 font-mono text-zinc-500">{(item.avgVol180d || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
                                 <td className="p-4">
                                   {item.isCeoDesk ? (
                                     <span className="text-xs bg-emerald-950 text-emerald-400 border border-emerald-900 px-2 py-1 rounded">CEO DESK</span>

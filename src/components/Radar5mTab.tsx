@@ -156,9 +156,9 @@ export default function Radar5mTab() {
                        return (
                        <tr key={item.symbol} className="hover:bg-zinc-800/20 transition-colors">
                           <td className="p-4 font-bold text-indigo-300">{item.symbol}</td>
-                          <td className="p-4 font-mono text-zinc-200">₹{item.ltp.toFixed(2)}</td>
-                          <td className="p-4 font-mono text-emerald-400 text-right">{(item.latest5mVol).toLocaleString()}</td>
-                          <td className="p-4 font-mono text-zinc-500 text-right">{(item.avg5mVol400).toLocaleString()}</td>
+                          <td className="p-4 font-mono text-zinc-200">₹{Number(item.ltp || 0).toFixed(2)}</td>
+                          <td className="p-4 font-mono text-emerald-400 text-right">{(item.currentVol || 0).toLocaleString()} <span className="text-zinc-500 text-xs ml-1">({item.multiplierHit}x)</span></td>
+                          <td className="p-4 font-mono text-zinc-500 text-right">{(item.avgVol || 0).toLocaleString()}</td>
                           <td className="p-4 font-mono text-zinc-400 text-right">{t.toLocaleTimeString()}</td>
                        </tr>
                        )
