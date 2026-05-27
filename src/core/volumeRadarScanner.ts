@@ -164,16 +164,14 @@ export class VolumeRadarScanner {
         const fromDate = new Date(toDate);
         fromDate.setUTCMinutes(fromDate.getUTCMinutes() - 5); // Shift start target back by 5 mins
 
-        // 4. Format payload string with absolute seconds padding ':00'
+        // 4. Format payload string precisely to 'YYYY-MM-DD HH:mm'
         const formatPayload = (d: Date) => {
             const y = d.getUTCFullYear();
             const m = String(d.getUTCMonth() + 1).padStart(2, '0');
             const dayStr = String(d.getUTCDate()).padStart(2, '0');
             const h = String(d.getUTCHours()).padStart(2, '0');
             const mn = String(d.getUTCMinutes()).padStart(2, '0');
-            
-            // Appending ':00' ensures the broker's database engine parses the timestamp cleanly
-            return `${y}-${m}-${dayStr} ${h}:${mn}:00`;
+            return `${y}-${m}-${dayStr} ${h}:${mn}`;
         };
 
         return {
@@ -225,9 +223,9 @@ export class VolumeRadarScanner {
                         'X-MACAddress': '00:00:00:00:00:00'
                     },
                     data: {
-                        exchange: 'NSE',
+                        exchange: '1',
                         symboltoken: token,
-                        interval: 'FIVE_MINUTE',
+                        interval: '5minute',
                         fromdate: fromDateStr,
                         todate: toDateStr
                     }
