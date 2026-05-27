@@ -98,13 +98,22 @@ export default function Radar5mTab() {
                    />
                </div>
                {status.hasBaselines && (
-                   <a 
-                      href="/api/radar5m/download-baseline"
-                      download
-                      className="px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
-                   >
-                       <Download size={16} /> <span className="hidden sm:inline">Baseline</span>
-                   </a>
+                   <>
+                       <button 
+                          onClick={initBaselines}
+                          className="px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
+                          title="Re-fetch Historical Baselines"
+                       >
+                           <RefreshCw size={16} /> <span className="hidden sm:inline">Refresh Init</span>
+                       </button>
+                       <a 
+                          href="/api/radar5m/download-baseline"
+                          download
+                          className="px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
+                       >
+                           <Download size={16} /> <span className="hidden sm:inline">Baseline</span>
+                       </a>
+                   </>
                )}
                <button 
                   onClick={toggleScan}
