@@ -56,41 +56,104 @@ export class VolumeRadarScanner {
      * Fetches historical 5m data from Yahoo Finance to calculate the 400-period average volume baseline.
      */
     public static async initializeHistoricalAverages() {
-        console.log("[RADAR] Fetching 400-period 5m historical baselines using Yahoo Finance...");
+        console.log("[RADAR] Fetching 400-period 5m historical baselines using MStock...");
         let loadedCount = 0;
         const exportData: BaselineExportItem[] = [];
         const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
+        const apiKey = process.env.MSTOCK_API_KEY || "";
+        if (!apiKey) {
+            console.error("[RADAR] MSTOCK_API_KEY missing. Cannot fetch baselines.");
+            return;
+        }
+
+        let sessionToken = null;
+        try {
+            sessionToken = await MstockService.getMstockJwtToken();
+        } catch (e: any) {
+            console.error("[RADAR] MStock Auth Failed:", e.message);
+            return;
+        }
+
+        // Time logic: Fetch last 12 days for historical calculation
+        const now = new Date();
+        const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+        const istTime = new Date(now.getTime() + IST_OFFSET);
+        
+        const toDateIst = new Date(istTime);
+        const fromDateIst = new Date(toDateIst.getTime() - (12 * 24 * 60 * 60 * 1000)); // 12 days back
+
+        const formatPayload = (d: Date, timeStr: string) => {
+            const y = d.getUTCFullYear();
+            const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const dayStr = String(d.getUTCDate()).padStart(2, '0');
+            return `${y}-${m}-${dayStr} ${timeStr}`;
+        };
+
+        const fromDateStr = formatPayload(fromDateIst, "09:15");
+        const toDateStr = formatPayload(toDateIst, "15:30");
+
         for (const sym of INTRADAY_STOCKS) {
             const cleanSym = sym.replace('.NS', '');
+            const token = INTRADAY_TOKEN_MAP[cleanSym] || MstockService.getEqTokenOnlySync(cleanSym);
+            
+            if (!token) {
+                console.log(`[RADAR-INIT] Token missing for ${cleanSym}`);
+                continue;
+            }
+
             try {
-                // Yahoo finance limits range depending on interval. For 5m, maximum range is 60 days
-                const history = await YahooService.get5MinData(sym, 14); 
-                if (Array.isArray(history) && history.length > 0) {
-                    // Filter out any candles where volume is NaN, null, or undefined
-                    const validHistory = history.filter((curr: any) => curr && curr.volume !== null && !isNaN(curr.volume));
-                    
-                    const last400 = validHistory.slice(-400);
-
-                    if (last400.length > 0) {
-                        const sum = last400.reduce((acc: number, curr: any) => acc + (curr.volume || 0), 0);
-                        const avg = Math.round(sum / last400.length);
-                        
-                        this.avg5mVolumes[cleanSym] = avg;
-                        loadedCount++;
-
-                        // Push strictly formatted structure for the JSON export
-                        exportData.push({
-                            "Sr Number": loadedCount,
-                            "Stock Name/Symbol": cleanSym,
-                            "400 Average volume": avg
-                        });
+                const response = await axios({
+                    method: 'get',
+                    url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
+                    headers: {
+                        'X-Mirae-Version': '1',
+                        'Authorization': `Bearer ${sessionToken}`,
+                        'X-PrivateKey': apiKey,
+                        'Content-Type': 'application/json',
+                        'X-ClientLocalIP': '127.0.0.1',
+                        'X-ClientPublicIP': '127.0.0.1',
+                        'X-MACAddress': '00:00:00:00:00:00'
+                    },
+                    data: {
+                        exchange: '1',
+                        symboltoken: token,
+                        interval: '5minute',
+                        fromdate: fromDateStr,
+                        todate: toDateStr
                     }
+                });
+
+                const isStatusSuccess = response.data?.status === true || response.data?.status === "true";
+                if (isStatusSuccess && response.data?.data?.candles) {
+                    const candles = response.data.data.candles;
+                    if (Array.isArray(candles) && candles.length > 0) {
+                        const validHistory = candles.filter((curr: any) => curr && curr[5] !== null && !isNaN(Number(curr[5])));
+                        const last400 = validHistory.slice(-400);
+
+                        if (last400.length > 0) {
+                            const sum = last400.reduce((acc: number, curr: any) => acc + (Number(curr[5]) || 0), 0);
+                            const avg = Math.round(sum / last400.length);
+                            
+                            this.avg5mVolumes[cleanSym] = avg;
+                            loadedCount++;
+
+                            exportData.push({
+                                "Sr Number": loadedCount,
+                                "Stock Name/Symbol": cleanSym,
+                                "400 Average volume": avg
+                            });
+                        }
+                    } else {
+                        console.log(`[RADAR-INIT] No history candles for ${cleanSym}`);
+                    }
+                } else {
+                     console.error(`[RADAR-INIT] MStock API rejected history for ${cleanSym}`, response.data?.message);
                 }
             } catch (e: any) {
-                 // Fail silently per ticker to keep loop running
+                 console.error(`[RADAR-INIT] Fetch failed for ${cleanSym}:`, e.message);
             }
-            await delay(1500); // Increased delay to avoid rate limits
+            await delay(500); 
         }
         console.log(`[RADAR] Successfully derived baselines for ${loadedCount}/${INTRADAY_STOCKS.length} stocks.`);
         
