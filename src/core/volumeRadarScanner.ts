@@ -216,15 +216,22 @@ export class VolumeRadarScanner {
                 
                 if (response.data?.status === "true" && response.data?.data?.candles) {
                     const candles = response.data.data.candles;
+                    
+                    // DIAGNOSTIC LOG 1: See exactly what MStock returned for this ticker
+                    console.log(`[DIAGNOSTIC] ${cleanSym} returned ${candles.length} candles. Raw:`, JSON.stringify(candles));
+
                     if (candles && candles.length > 0) {
-                        const latestCandle = candles[candles.length - 1]; // Pulls the target closed window
-                        const openPrice = Number(latestCandle[1]) || 0;
-                        const ltp = Number(latestCandle[4]) || 0;
-                        const recent5mVol = Number(latestCandle[5]) || 0;
+                        const targetCandle = candles[candles.length - 1]; // Pulls the target closed window
+                        const openPrice = Number(targetCandle[1]) || 0;
+                        const ltp = Number(targetCandle[4]) || 0;
+                        const recent5mVol = Number(targetCandle[5]) || 0;
 
                         const avg400 = this.avg5mVolumes[cleanSym] || 0;
                         const targetVolume = avg400 * this.multiplier;
                         const isPositiveChange = ltp > openPrice;
+
+                        // DIAGNOSTIC LOG 2: See the math comparison causing the trigger or skip
+                        console.log(`[DIAGNOSTIC] ${cleanSym} Match Calc -> RecentVol: ${recent5mVol}, TargetVol Threshold: ${targetVolume} (Avg400: ${avg400})`);
 
                         if (avg400 > 0 && recent5mVol > targetVolume) {
                             this.updateRadarList(newRadarResults, cleanSym, ltp, avg400, recent5mVol);
@@ -238,7 +245,12 @@ export class VolumeRadarScanner {
                                    .catch(err => console.error(`[AUTO-TRADE] Failed BO for ${sym}. Reason:`, err.message));
                             }
                         }
+                    } else {
+                        console.warn(`[DIAGNOSTIC] ${cleanSym} returned an EMPTY candle array [] for this time slot.`);
                     }
+                } else {
+                    // DIAGNOSTIC LOG 3: Capture API level failures
+                    console.error(`[DIAGNOSTIC] MStock API rejected ${cleanSym}. Message:`, response.data?.message || "Unknown Error");
                 }
             } catch (err: any) {
                 // Per ticker fallback container
