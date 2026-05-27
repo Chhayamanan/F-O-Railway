@@ -214,43 +214,45 @@ export class VolumeRadarScanner {
                     }
                 });
                 
-                if (response.data?.status === "true" && response.data?.data?.candles) {
+                // 1. Loosen the type restriction to check for both boolean true or string "true"
+                const isStatusSuccess = response.data?.status === true || response.data?.status === "true";
+
+                if (isStatusSuccess && response.data?.data) {
                     const candles = response.data.data.candles;
                     
-                    // DIAGNOSTIC LOG 1: See exactly what MStock returned for this ticker
-                    console.log(`[DIAGNOSTIC] ${cleanSym} returned ${candles.length} candles. Raw:`, JSON.stringify(candles));
-
-                    if (candles && candles.length > 0) {
-                        const targetCandle = candles[candles.length - 1]; // Pulls the target closed window
+                    // Check if candles array exists and has elements
+                    if (Array.isArray(candles) && candles.length > 0) {
+                        const targetCandle = candles[candles.length - 1]; // Pull the targeted closed window block
+                        
+                        const recent5mVol = Number(targetCandle[5]) || 0; 
+                        const ltp = Number(targetCandle[4]) || 0;         
                         const openPrice = Number(targetCandle[1]) || 0;
-                        const ltp = Number(targetCandle[4]) || 0;
-                        const recent5mVol = Number(targetCandle[5]) || 0;
 
                         const avg400 = this.avg5mVolumes[cleanSym] || 0;
                         const targetVolume = avg400 * this.multiplier;
+
                         const isPositiveChange = ltp > openPrice;
 
-                        // DIAGNOSTIC LOG 2: See the math comparison causing the trigger or skip
-                        console.log(`[DIAGNOSTIC] ${cleanSym} Match Calc -> RecentVol: ${recent5mVol}, TargetVol Threshold: ${targetVolume} (Avg400: ${avg400})`);
+                        console.log(`[RADAR-MATH] ${cleanSym} -> 5mVol: ${recent5mVol}, Threshold: ${targetVolume} (Avg400: ${avg400})`);
 
                         if (avg400 > 0 && recent5mVol > targetVolume) {
+                            console.log(`[ALERT] 🔥 breakout anomaly spotted on ${cleanSym}! Volume breached limit.`);
                             this.updateRadarList(newRadarResults, cleanSym, ltp, avg400, recent5mVol);
 
-                            // Auto Trade execution (1 share intraday BUY with 4% target, 2% SL)
+                            // Auto Trade execution block
                             if (isPositiveChange) {
                                 const targetPrice = ltp * 1.04;
                                 const slPrice = ltp * 0.98;
                                 MstockService.placeEquityBracketOrder(sym, 1, ltp, slPrice, targetPrice)
-                                   .then(orderId => console.log(`[AUTO-TRADE] Placed BO for ${sym} (ID: ${orderId}) targets 4%, SL 2%`))
-                                   .catch(err => console.error(`[AUTO-TRADE] Failed BO for ${sym}. Reason:`, err.message));
+                                   .then(orderId => console.log(`[AUTO-TRADE] Placed BO for ${sym} (ID: ${orderId})`))
+                                   .catch(err => console.error(`[AUTO-TRADE] Failed BO for ${sym}:`, err.message));
                             }
                         }
                     } else {
-                        console.warn(`[DIAGNOSTIC] ${cleanSym} returned an EMPTY candle array [] for this time slot.`);
+                        console.log(`[RADAR-EMPTY] ${cleanSym} query worked, but returned no candles [] for this specific time box.`);
                     }
                 } else {
-                    // DIAGNOSTIC LOG 3: Capture API level failures
-                    console.error(`[DIAGNOSTIC] MStock API rejected ${cleanSym}. Message:`, response.data?.message || "Unknown Error");
+                    console.error(`[RADAR-ERROR] MStock completely rejected ${cleanSym}. Raw Response Data:`, JSON.stringify(response.data));
                 }
             } catch (err: any) {
                 // Per ticker fallback container
