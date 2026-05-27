@@ -10,7 +10,20 @@ export const INTRADAY_TOKEN_MAP: Record<string, string> = {
     "SETFNIF50": "10176",
     "MANORAMA": "10227",
     "SATIN": "10453",
-    "BHARTIARTL": "10604"
+    "BHARTIARTL": "10604",
+    "360ONE": "13061",
+    "3MINDIA": "474",
+    "AARTIDRUGS": "4481",
+    "AARTIIND": "7",
+    "AARTIPHARM": "13868",
+    "AAVAS": "5385",
+    "ABB": "13",
+    "ABBOTINDIA": "17903",
+    "ABCAPITAL": "21614",
+    "ABFRL": "30108",
+    "ABREL": "625",
+    "ABSLAMC": "6018",
+    "ACC": "22"
 };
 
 export interface VolumeRadarItem {
