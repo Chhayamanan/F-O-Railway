@@ -207,31 +207,59 @@ export class VolumeRadarScanner {
     }
 
     // ── STEP 2: Fetch last closed 5m candle from MStock ──────────────────────
-    private static getLastClosed5mWindow(): { fromdate: string; todate: string } {
+    private static getLastClosed5mWindow(): { fromdate: string; todate: string } | null {
         const now = new Date();
 
         // Convert to IST (UTC+5:30)
         const istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
         const ist   = new Date(istMs);
 
-        // Floor to current 5m block, then go back one full block (last closed candle)
-        const flooredMin = Math.floor(ist.getUTCMinutes() / 5) * 5;
-        const blockEnd   = new Date(ist);
-        blockEnd.setUTCMinutes(flooredMin, 0, 0);
+        const istHour = ist.getUTCHours();
+        const istMin  = ist.getUTCMinutes();
+        const totalMin = istHour * 60 + istMin;
 
-        const toDate   = new Date(blockEnd.getTime() - 5 * 60 * 1000);   // end of last candle
-        const fromDate = new Date(toDate.getTime()   - 5 * 60 * 1000);   // start of last candle
+        // Market hours: 09:15 – 15:30 IST
+        const MARKET_OPEN  = 9  * 60 + 15;  // 555
+        const MARKET_CLOSE = 15 * 60 + 30;  // 930
 
-        const fmt = (d: Date) => {
-            const Y  = d.getUTCFullYear();
-            const M  = String(d.getUTCMonth() + 1).padStart(2, '0');
-            const D  = String(d.getUTCDate()).padStart(2, '0');
-            const h  = String(d.getUTCHours()).padStart(2, '0');
-            const m  = String(d.getUTCMinutes()).padStart(2, '0');
-            return `${Y}-${M}-${D} ${h}:${m}`;
+        let blockEndMin: number;
+        let dateBase: Date = ist; // which day's candle
+
+        if (totalMin < MARKET_OPEN + 5) {
+            // Before first candle is closed (pre-market or very early)
+            // Use last candle of PREVIOUS trading day: 15:25→15:30
+            const prevDay = new Date(ist.getTime() - 24 * 60 * 60 * 1000);
+            // Skip back over weekends
+            while ([0, 6].includes(prevDay.getUTCDay())) {
+                prevDay.setTime(prevDay.getTime() - 24 * 60 * 60 * 1000);
+            }
+            dateBase    = prevDay;
+            blockEndMin = MARKET_CLOSE;
+        } else if (totalMin >= MARKET_CLOSE) {
+            // After market close → use last candle of today: 15:25→15:30
+            blockEndMin = MARKET_CLOSE;
+        } else {
+            // During market hours → last fully closed 5m candle
+            const flooredMin = Math.floor(totalMin / 5) * 5;
+            blockEndMin = flooredMin; // this block just closed
+        }
+
+        const fmt = (Y: number, M: number, D: number, h: number, m: number) =>
+            `${Y}-${String(M).padStart(2,'0')}-${String(D).padStart(2,'0')} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+
+        const Y = dateBase.getUTCFullYear();
+        const M = dateBase.getUTCMonth() + 1;
+        const D = dateBase.getUTCDate();
+
+        const toH   = Math.floor(blockEndMin / 60);
+        const toM   = blockEndMin % 60;
+        const fromH = Math.floor((blockEndMin - 5) / 60);
+        const fromM = (blockEndMin - 5) % 60;
+
+        return {
+            fromdate: fmt(Y, M, D, fromH, fromM),
+            todate:   fmt(Y, M, D, toH, toM)
         };
-
-        return { fromdate: fmt(fromDate), todate: fmt(toDate) };
     }
 
     // ── STEP 3: One full scan round across all stocks ─────────────────────────
@@ -262,7 +290,13 @@ export class VolumeRadarScanner {
             // Ignore silently
         }
 
-        const { fromdate, todate } = this.getLastClosed5mWindow();
+        const window = this.getLastClosed5mWindow();
+        if (!window) {
+            console.log("[RADAR] No valid market window. Skipping scan.");
+            return;
+        }
+
+        const { fromdate, todate } = window;
         console.log(`[RADAR] Scanning window: ${fromdate} → ${todate}`);
 
         const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
