@@ -1,5 +1,6 @@
 import { MstockService } from './mstockService';
 import yahooFinanceDefault from 'yahoo-finance2';
+import axios from 'axios';
 
 const YahooFinanceClass = (yahooFinanceDefault as any).default || yahooFinanceDefault;
 const yahooFinance = typeof YahooFinanceClass === 'function' ? new YahooFinanceClass({ suppressNotices: ['yahooSurvey'] }) : YahooFinanceClass;
@@ -29,25 +30,36 @@ export class YahooService {
 
   static async get5MinData(symbol: string, daysBack: number = 60) {
     const ticker = symbol.endsWith('.NS') || symbol.startsWith('^') ? symbol : `${symbol}.NS`;
-    const startDate = new Date();
-    // Yahoo Finance only allows max 60 days for 5m interval
-    startDate.setDate(startDate.getDate() - Math.min(daysBack, 60));
+    const range = daysBack > 14 ? '60m' : '14d'; // Just approximation, Yahoo supports 1d, 5d, 1mo, 3mo
+    const exactRange = daysBack <= 14 ? '14d' : '60d';
     
     let attempt = 0;
     while (attempt < 3) {
         try {
-            const chartData = await yahooFinance.chart(ticker, {
-                period1: startDate,
-                period2: new Date(),
-                interval: "5m"
+            const url = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=5m&range=${exactRange}`;
+            
+            // Use axios to fetch directly
+            const response = await axios.get(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                    'Accept': '*/*, application/json'
+                },
+                timeout: 10000
             });
-            return (chartData.quotes || []).map((q: any) => ({
-                date: q.date,
-                open: q.open || 0,
-                high: q.high || 0,
-                low: q.low || 0,
-                close: q.close || 0,
-                volume: q.volume || 0
+            
+            const result = response.data?.chart?.result?.[0];
+            if (!result || !result.timestamp) return [];
+            
+            const timestamps = result.timestamp;
+            const quote = result.indicators.quote[0];
+            
+            return timestamps.map((time: number, i: number) => ({
+                date: new Date(time * 1000),
+                open: quote.open[i] || 0,
+                high: quote.high[i] || 0,
+                low: quote.low[i] || 0,
+                close: quote.close[i] || 0,
+                volume: quote.volume[i] || 0
             }));
         } catch (e: any) {
             attempt++;

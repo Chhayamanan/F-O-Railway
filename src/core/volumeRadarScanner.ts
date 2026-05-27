@@ -87,15 +87,19 @@ export class VolumeRadarScanner {
                         });
                     }
                 }
-            } catch (e: any) {
-                 // Fail silently per ticker to keep loop running
+            } catch (err: any) {
+                 console.error(`[RADAR-CATCH] ${cleanSym} threw an error:`, err.message || err);
             }
-            await delay(1500); // Increased delay to avoid rate limits
+            await delay(1000); // Wait 1s between stocks
         }
         console.log(`[RADAR] Successfully derived baselines for ${loadedCount}/${INTRADAY_STOCKS.length} stocks.`);
         
         // Save the downloadable JSON baseline report (overwrites previous runs)
-        this.exportBaselineJson(exportData);
+        if (loadedCount > 0) {
+            this.exportBaselineJson(exportData);
+        } else {
+            console.warn("[RADAR] Warning: 0 baselines loaded, skipping JSON overwrite to preserve previous data.");
+        }
     }
 
     /**
@@ -274,7 +278,7 @@ export class VolumeRadarScanner {
                     console.error(`[RADAR-ERROR] MStock completely rejected ${cleanSym}. Raw Response Data:`, JSON.stringify(response.data));
                 }
             } catch (err: any) {
-                // Per ticker fallback container
+                console.error(`[RADAR-CATCH] ${cleanSym} threw an error:`, err.message || err);
             }
             await delay(100);
         }
