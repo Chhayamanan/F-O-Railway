@@ -130,49 +130,30 @@ export class VolumeRadarScanner {
      * Example: Running code at 09:28:40 targets fromdate: "09:20" -> todate: "09:25"
      */
     private static getPast5MinWindow(): { fromDateStr: string; toDateStr: string } {
-        // 1. Get current system time
+        // 1. Get the current system time (regardless of whether it's UTC or Local)
         const now = new Date();
 
-        // 2. Force conversion to Indian Standard Time (IST) strings using Intl
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: 'Asia/Kolkata',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-        });
+        // 2. Explicitly add 5 hours and 30 minutes (in milliseconds) to map to IST
+        const IST_OFFSET = 5.5 * 60 * 60 * 1000; 
+        const istTime = new Date(now.getTime() + IST_OFFSET);
 
-        const parts = formatter.formatToParts(now);
-        const getValue = (type: string) => parts.find(p => p.type === type)!.value;
-
-        const yyyy = getValue('year');
-        const mm = getValue('month');
-        const dd = getValue('day');
-        const hh = parseInt(getValue('hour'));
-        const min = parseInt(getValue('minute'));
-
-        // 3. Construct a Date object locked into India's current clock time
-        const istDate = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd), hh, min, 0);
-
-        // 4. Drop down to the start of the completed 5-minute block
-        const currentBlockMin = Math.floor(istDate.getMinutes() / 5) * 5;
+        // 3. Drop down to the start of the current completed 5-minute block
+        const currentBlockMin = Math.floor(istTime.getUTCMinutes() / 5) * 5;
         
-        const toDate = new Date(istDate);
-        toDate.setMinutes(currentBlockMin, 0, 0); 
+        const toDate = new Date(istTime);
+        // Note: We use UTC methods here because we manually shifted the absolute timeline forward
+        toDate.setUTCMinutes(currentBlockMin, 0, 0); 
         
         const fromDate = new Date(toDate);
-        fromDate.setMinutes(fromDate.getMinutes() - 5); 
+        fromDate.setUTCMinutes(fromDate.getUTCMinutes() - 5); 
 
-        // 5. Format strictly to 'YYYY-MM-DD HH:mm' for MStock payload
+        // 4. Format strictly to 'YYYY-MM-DD HH:mm' expected by the MStock endpoint
         const formatPayload = (d: Date) => {
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const dayStr = String(d.getDate()).padStart(2, '0');
-            const h = String(d.getHours()).padStart(2, '0');
-            const mn = String(d.getMinutes()).padStart(2, '0');
+            const y = d.getUTCFullYear();
+            const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const dayStr = String(d.getUTCDate()).padStart(2, '0');
+            const h = String(d.getUTCHours()).padStart(2, '0');
+            const mn = String(d.getUTCMinutes()).padStart(2, '0');
             return `${y}-${m}-${dayStr} ${h}:${mn}`;
         };
 
