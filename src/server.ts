@@ -174,6 +174,39 @@ async function startServer() {
     });
   });
 
+  app.get("/api/radar5m/baseline-status", (req, res) => {
+    try {
+      const fs   = require('fs');
+      const path = require('path');
+      const filePath = path.join(process.cwd(), 'volume_baseline_report.json');
+
+      if (!fs.existsSync(filePath)) {
+        return res.json({ exists: false, fetchedAt: null, stockCount: 0, data: [] });
+      }
+
+      const raw      = fs.readFileSync(filePath, 'utf-8');
+      const parsed   = JSON.parse(raw);
+      const stat     = fs.statSync(filePath);
+
+      // Support both old format { "Stock Name/Symbol", "400 Average volume" }
+      // and new format { symbol, avgVol, candleCount }
+      const data = parsed.map((item: any) => ({
+        symbol:      item.symbol      || item["Stock Name/Symbol"] || '',
+        avgVol:      item.avgVol      ?? item["400 Average volume"] ?? 0,
+        candleCount: item.candleCount ?? undefined,
+      }));
+
+      res.json({
+        exists:     true,
+        fetchedAt:  stat.mtime.toISOString(),
+        stockCount: data.length,
+        data
+      });
+    } catch (err: any) {
+      res.status(500).json({ exists: false, fetchedAt: null, stockCount: 0, data: [], error: err.message });
+    }
+  });
+
   app.post("/api/radar5m/init", (req, res) => {
     VolumeRadarScanner.initializeHistoricalAverages().catch(e => console.error(e));
     res.json({ success: true, message: "Initializing historical baselines..." });
@@ -194,11 +227,12 @@ async function startServer() {
 
   app.post("/api/radar5m/multiplier", (req, res) => {
     const { multiplier } = req.body;
-    if (typeof multiplier === 'number') {
-        VolumeRadarScanner.setMultiplier(multiplier);
-        res.json({ success: true });
+    const val = parseFloat(multiplier);
+    if (!isNaN(val) && val > 0) {
+      VolumeRadarScanner.setMultiplier(val);
+      res.json({ success: true, multiplier: val });
     } else {
-        res.status(400).json({ success: false, error: "Invalid multiplier" });
+      res.status(400).json({ success: false, error: "Invalid multiplier" });
     }
   });
 

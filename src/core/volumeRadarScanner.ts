@@ -243,7 +243,7 @@ export class VolumeRadarScanner {
                 }
 
             } catch (err: any) {
-                console.error(`[RADAR] Error on ${cleanSym}:`, err.response?.data || err.message);
+                console.error(`[RADAR-CATCH] ${cleanSym}:`, err.response?.data || err.message);
             }
 
             await delay(150); // throttle between stocks
