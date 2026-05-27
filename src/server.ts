@@ -162,15 +162,16 @@ async function startServer() {
 
   // ======== RADAR 5M API ========
   app.get("/api/radar5m/status", (req, res) => {
-    if (Object.keys(VolumeRadarScanner.avg5mVolumes).length === 0) {
-        VolumeRadarScanner.loadBaselinesFromFile();
+    const avgVols = VolumeRadarScanner.avgVolumes || {};
+    if (Object.keys(avgVols).length === 0) {
+        VolumeRadarScanner.loadBaselines();
     }
     res.json({
         isRunning: VolumeRadarScanner.isRunning,
-        lastScanTime: VolumeRadarScanner.lastScanTime,
+        lastScanTime: (VolumeRadarScanner as any).lastScanTime || null,
         radarList: VolumeRadarScanner.radarResults,
         multiplier: VolumeRadarScanner.multiplier,
-        hasBaselines: Object.keys(VolumeRadarScanner.avg5mVolumes).length > 0
+        hasBaselines: Object.keys(VolumeRadarScanner.avgVolumes || {}).length > 0
     });
   });
 
@@ -208,12 +209,13 @@ async function startServer() {
   });
 
   app.post("/api/radar5m/init", (req, res) => {
-    VolumeRadarScanner.initializeHistoricalAverages().catch(e => console.error(e));
+    VolumeRadarScanner.initializeBaselines().catch(e => console.error(e));
     res.json({ success: true, message: "Initializing historical baselines..." });
   });
 
   app.post("/api/radar5m/start", async (req, res) => {
-    if (Object.keys(VolumeRadarScanner.avg5mVolumes).length === 0) {
+    const avgVols = VolumeRadarScanner.avgVolumes || {};
+    if (Object.keys(avgVols).length === 0) {
         return res.status(400).json({ success: false, error: "Must run initialization first." });
     }
     await VolumeRadarScanner.start();
