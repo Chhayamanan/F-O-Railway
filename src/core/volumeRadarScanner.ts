@@ -24,6 +24,7 @@ export class VolumeRadarScanner {
     public static timeoutId: any = null;
     public static avg5mVolumes: Record<string, number> = {};
     public static lastCumulativeVolumes: Record<string, number> = {};
+    public static lastPrices: Record<string, number> = {};
     public static radarResults: VolumeRadarItem[] = [];
     public static multiplier: number = 10;
     public static lastScanTime: number = 0;
@@ -140,20 +141,36 @@ export class VolumeRadarScanner {
 
             if (isInitialBaseline) {
                 this.lastCumulativeVolumes[sym] = currentCumVol;
+                this.lastPrices[sym] = ltp;
                 continue;
             }
 
             const lastCumVol = this.lastCumulativeVolumes[sym];
+            const prevPrice = this.lastPrices[sym];
+            
             if (lastCumVol !== undefined && currentCumVol >= lastCumVol) {
                 const recent5mVol = currentCumVol - lastCumVol;
                 const avg400 = this.avg5mVolumes[cleanSym] || 0;
                 const targetVolume = avg400 * this.multiplier;
 
+                // Positive price check
+                const isPositiveChange = prevPrice !== undefined && ltp > prevPrice;
+
                 if (avg400 > 0 && recent5mVol > targetVolume) {
                     this.updateRadarList(newRadarResults, cleanSym, ltp, avg400, recent5mVol);
+
+                    // Auto Trade execution (1 share intraday BUY with 4% target, 2% SL)
+                    if (isPositiveChange) {
+                        const targetPrice = ltp * 1.04;
+                        const slPrice = ltp * 0.98;
+                        MstockService.placeEquityBracketOrder(sym, 1, ltp, slPrice, targetPrice)
+                           .then(orderId => console.log(`[AUTO-TRADE] Placed BO for ${sym} (ID: ${orderId}) targets 4%, SL 2%`))
+                           .catch(err => console.error(`[AUTO-TRADE] Failed BO for ${sym}. Reason:`, err.message));
+                    }
                 }
             }
             this.lastCumulativeVolumes[sym] = currentCumVol;
+            this.lastPrices[sym] = ltp;
         }
 
         if (!isInitialBaseline) {
