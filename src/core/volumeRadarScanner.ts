@@ -103,6 +103,39 @@ export class VolumeRadarScanner {
     }
 
     /**
+     * Utility to calculate the exact fromdate and todate for the last completed 5m candle.
+     * Example: 09:28:35 becomes fromdate: "09:20" and todate: "09:25"
+     */
+    private static getPast5MinWindow(): { fromDateStr: string; toDateStr: string } {
+        const now = new Date();
+        
+        // 1. Drop down to the start of the current 5-minute block (e.g., 9:28 -> 9:25)
+        const currentBlockMin = Math.floor(now.getMinutes() / 5) * 5;
+        
+        const toDate = new Date(now);
+        toDate.setMinutes(currentBlockMin, 0, 0); // Sets to 09:25:00
+        
+        // 2. Subtract 5 full minutes to get the beginning of that candle block (e.g., 09:20:00)
+        const fromDate = new Date(toDate);
+        fromDate.setMinutes(fromDate.getMinutes() - 5); 
+
+        // 3. Format strictly to 'YYYY-MM-DD HH:mm' as specified in MStock cURL
+        const format = (d: Date) => {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+        };
+
+        return {
+            fromDateStr: format(fromDate),
+            toDateStr: format(toDate)
+        };
+    }
+
+    /**
      * CORE ROUTER: Decides whether to run a live scan or an after-hours static scan.
      */
     private static async executeScan(isInitialBaseline = false) {
@@ -116,61 +149,98 @@ export class VolumeRadarScanner {
     }
 
     /**
-     * MODE A: Live Scan Engine (Uses MStock cumulative deltas)
+     * MODE A: Live Scan Engine (Uses MStock historical candles)
      */
     private static async runLiveScan(isInitialBaseline = false) {
-        console.log(`[RADAR] Live Scan triggered. (Baseline Snapshot: ${isInitialBaseline})`);
-        let liveData: any = {};
+        console.log(`[RADAR] Starting MStock historical candle scan...`);
+        let sessionToken = null;
         try {
-            liveData = await MstockService.getCurrentPrices(RAW_UNIVERSE);
-            if (!liveData || Object.keys(liveData).length === 0) return;
-        } catch (e) {
-            console.error("[RADAR] Live MStock API failed. Skipping round.");
+            sessionToken = await MstockService.getMstockJwtToken();
+        } catch (e: any) {
+            console.error("[RADAR] MStock Auth Failed. Skipping live scan. Reason:", e.message);
             return;
         }
 
+        const apiKey = process.env.MSTOCK_API_KEY;
+        if (!apiKey) {
+            console.error("[RADAR] MSTOCK_API_KEY missing. Skipping live scan.");
+            return;
+        }
+
+        // Get dynamically rounded structural times (e.g., 9:20 and 9:25)
+        const { fromDateStr, toDateStr } = this.getPast5MinWindow();
+        console.log(`[RADAR] Fetching historical candle frame between: ${fromDateStr} -> ${toDateStr}`);
+
         const newRadarResults = [...this.radarResults];
+        const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
         for (const sym of RAW_UNIVERSE) {
             const cleanSym = sym.replace('.NS', '');
-            const item = liveData[sym] || liveData[cleanSym];
-            if (!item) continue;
+            const token = MstockService.getEqTokenOnlySync(cleanSym);
 
-            const currentCumVol = item.volume || 0;
-            const ltp = item.price || 0;
-
-            if (isInitialBaseline) {
-                this.lastCumulativeVolumes[sym] = currentCumVol;
-                this.lastPrices[sym] = ltp;
+            if (!token) {
+                // Wait briefly between misses to avoid spamming the log if lots of tokens are missing
                 continue;
             }
 
-            const lastCumVol = this.lastCumulativeVolumes[sym];
-            const prevPrice = this.lastPrices[sym];
-            
-            if (lastCumVol !== undefined && currentCumVol >= lastCumVol) {
-                const recent5mVol = currentCumVol - lastCumVol;
-                const avg400 = this.avg5mVolumes[cleanSym] || 0;
-                const targetVolume = avg400 * this.multiplier;
+            if (isInitialBaseline) {
+                // If it's an initial baseline snapshot, we just skip execution as there are no valid previous prices
+                continue; 
+            }
 
-                // Positive price check
-                const isPositiveChange = prevPrice !== undefined && ltp > prevPrice;
+            try {
+                const axios = require('axios');
+                const response = await axios({
+                    method: 'get',
+                    url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
+                    headers: {
+                        'X-Mirae-Version': '1',
+                        'Authorization': `Bearer ${sessionToken}`,
+                        'X-PrivateKey': apiKey,
+                        'Content-Type': 'application/json'
+                    },
+                    data: {
+                        exchange: 'NSE',
+                        symboltoken: token,
+                        interval: 'FIVE_MINUTE', 
+                        fromdate: fromDateStr,
+                        todate: toDateStr
+                    }
+                });
 
-                if (avg400 > 0 && recent5mVol > targetVolume) {
-                    this.updateRadarList(newRadarResults, cleanSym, ltp, avg400, recent5mVol);
+                if (response.data?.status === "true" && response.data?.data?.candles) {
+                    const candles = response.data.data.candles;
+                    
+                    if (candles.length > 0) {
+                        const targetCandle = candles[0]; 
+                        const recent5mVol = Number(targetCandle[5]) || 0; 
+                        const ltp = Number(targetCandle[4]) || 0;         
+                        const openPrice = Number(targetCandle[1]) || 0;
 
-                    // Auto Trade execution (1 share intraday BUY with 4% target, 2% SL)
-                    if (isPositiveChange) {
-                        const targetPrice = ltp * 1.04;
-                        const slPrice = ltp * 0.98;
-                        MstockService.placeEquityBracketOrder(sym, 1, ltp, slPrice, targetPrice)
-                           .then(orderId => console.log(`[AUTO-TRADE] Placed BO for ${sym} (ID: ${orderId}) targets 4%, SL 2%`))
-                           .catch(err => console.error(`[AUTO-TRADE] Failed BO for ${sym}. Reason:`, err.message));
+                        const avg400 = this.avg5mVolumes[cleanSym] || 0;
+                        const targetVolume = avg400 * this.multiplier;
+
+                        const isPositiveChange = ltp > openPrice;
+
+                        if (avg400 > 0 && recent5mVol > targetVolume) {
+                            this.updateRadarList(newRadarResults, cleanSym, ltp, avg400, recent5mVol);
+
+                            // Auto Trade execution (1 share intraday BUY with 4% target, 2% SL)
+                            if (isPositiveChange) {
+                                const targetPrice = ltp * 1.04;
+                                const slPrice = ltp * 0.98;
+                                MstockService.placeEquityBracketOrder(sym, 1, ltp, slPrice, targetPrice)
+                                   .then(orderId => console.log(`[AUTO-TRADE] Placed BO for ${sym} (ID: ${orderId}) targets 4%, SL 2%`))
+                                   .catch(err => console.error(`[AUTO-TRADE] Failed BO for ${sym}. Reason:`, err.message));
+                            }
+                        }
                     }
                 }
+
+            } catch (error: any) {
+                // Console error per token might be too spammy if 500 requests fail, we log quietly
             }
-            this.lastCumulativeVolumes[sym] = currentCumVol;
-            this.lastPrices[sym] = ltp;
+            await delay(100); // Prevent API rate limit per the user's past examples
         }
 
         if (!isInitialBaseline) {
