@@ -1,5 +1,6 @@
 import { INTRADAY_STOCKS } from '../services/marketDataService';
 import { MstockService } from '../services/mstockService';
+import { YahooService } from '../services/yahooService';
 import fs from 'fs';
 import path from 'path';
 
@@ -30,80 +31,29 @@ export class VolumeRadarScanner {
 
     /**
      * STEP 1: Manual Baseline Initialization (Run once daily)
-     * Completely migrated from Yahoo to MStock. Pulls the last 400 periods of historical data.
+     * Fetches historical 5m data from Yahoo Finance to calculate the 400-period average volume baseline.
      */
     public static async initializeHistoricalAverages() {
-        console.log("[RADAR] Initializing 400-period 5m baselines using MSTOCK API...");
+        console.log("[RADAR] Fetching 400-period 5m historical baselines using Yahoo Finance...");
         let loadedCount = 0;
         const exportData: BaselineExportItem[] = [];
         const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-        let sessionToken = null;
-        try {
-            sessionToken = await MstockService.getMstockJwtToken();
-        } catch (e: any) {
-            console.error("[RADAR] MStock Auth Failed. Cannot initialize baselines. Reason:", e.message);
-            return;
-        }
-
-        const apiKey = process.env.MSTOCK_API_KEY;
-        if (!apiKey) {
-            console.error("[RADAR] MSTOCK_API_KEY missing. Cannot initialize baselines.");
-            return;
-        }
-
-        // Format dates dynamically to pull a safe historical window (e.g., last 45 days)
-        const now = new Date();
-        const pastDate = new Date();
-        pastDate.setDate(now.getDate() - 45); // 45 days back provides ample runway to accumulate 400 5-min bars
-
-        const formatDate = (d: Date) => {
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} 09:15`;
-        };
-
-        const fromdateStr = formatDate(pastDate);
-        const todateStr = formatDate(now);
-
         for (const sym of INTRADAY_STOCKS) {
             const cleanSym = sym.replace('.NS', '');
-            const token = MstockService.getEqTokenOnlySync(cleanSym);
-
-            if (!token) {
-                console.warn(`[INIT] Missing token mapping code for ${cleanSym}. Skipping.`);
-                continue;
-            }
-
             try {
-                const axios = require('axios');
-                const response = await axios({
-                    method: 'get',
-                    url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
-                    headers: {
-                        'X-Mirae-Version': '1',
-                        'Authorization': `Bearer ${sessionToken}`,
-                        'X-PrivateKey': apiKey,
-                        'Content-Type': 'application/json'
-                    },
-                    data: {
-                        exchange: 'NSE',
-                        symboltoken: token,
-                        interval: 'FIVE_MINUTE',
-                        fromdate: fromdateStr,
-                        todate: todateStr
-                    }
-                });
-
-                if (response.data?.status === "true" && response.data?.data?.candles) {
-                    const candles = response.data.data.candles; // Formatted as array of arrays: [Timestamp, O, H, L, C, V]
-
-                    // Dynamic Filter: Drop rows where candle payload structure or the Volume field (Index 5) is NaN/Null
-                    const validCandles = candles.filter((c: any) => c && c[5] !== null && !isNaN(c[5]));
-                    const last400 = validCandles.slice(-400);
+                // Yahoo finance limits range depending on interval. For 5m, maximum range is 60 days
+                const history = await YahooService.get5MinData(sym, 14); 
+                if (Array.isArray(history) && history.length > 0) {
+                    // Filter out any candles where volume is NaN, null, or undefined
+                    const validHistory = history.filter((curr: any) => curr && curr.volume !== null && !isNaN(curr.volume));
+                    
+                    const last400 = validHistory.slice(-400);
 
                     if (last400.length > 0) {
-                        const sum = last400.reduce((acc: number, curr: any) => acc + (Number(curr[5]) || 0), 0);
+                        const sum = last400.reduce((acc: number, curr: any) => acc + (curr.volume || 0), 0);
                         const avg = Math.round(sum / last400.length);
-
+                        
                         this.avg5mVolumes[cleanSym] = avg;
                         loadedCount++;
 
@@ -118,9 +68,9 @@ export class VolumeRadarScanner {
             } catch (e: any) {
                  // Fail silently per ticker to keep loop running
             }
-            await delay(100);
+            await delay(200);
         }
-        console.log(`[RADAR] Successfully derived custom MStock averages for ${loadedCount}/${INTRADAY_STOCKS.length} stocks.`);
+        console.log(`[RADAR] Successfully derived baselines for ${loadedCount}/${INTRADAY_STOCKS.length} stocks.`);
         
         // Save the downloadable JSON baseline report (overwrites previous runs)
         this.exportBaselineJson(exportData);
@@ -164,6 +114,30 @@ export class VolumeRadarScanner {
             console.error("[RADAR] Failed to load baselines from file:", err);
         }
         return false;
+    }
+
+    /**
+     * Mathematically builds dynamic strings targeting closed time boxes 
+     * Example: Running code at 09:28:40 targets fromdate: "09:20" -> todate: "09:25"
+     */
+    private static getPast5MinWindow(): { fromDateStr: string; toDateStr: string } {
+        const now = new Date();
+        const currentBlockMin = Math.floor(now.getMinutes() / 5) * 5;
+        
+        const toDate = new Date(now);
+        toDate.setMinutes(currentBlockMin, 0, 0); 
+        
+        const fromDate = new Date(toDate);
+        fromDate.setMinutes(fromDate.getMinutes() - 5); 
+
+        const format = (d: Date) => {
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        };
+
+        return {
+            fromDateStr: format(fromDate),
+            toDateStr: format(toDate)
+        };
     }
 
     /**
