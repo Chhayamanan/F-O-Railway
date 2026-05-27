@@ -33,24 +33,30 @@ export class YahooService {
     // Yahoo Finance only allows max 60 days for 5m interval
     startDate.setDate(startDate.getDate() - Math.min(daysBack, 60));
     
-    try {
-        const chartData = await yahooFinance.chart(ticker, {
-            period1: startDate,
-            period2: new Date(),
-            interval: "5m"
-        });
-        return (chartData.quotes || []).map((q: any) => ({
-            date: q.date,
-            open: q.open || 0,
-            high: q.high || 0,
-            low: q.low || 0,
-            close: q.close || 0,
-            volume: q.volume || 0
-        }));
-    } catch (e: any) {
-        console.error(`[YAHOO] 5-minute historical fetch failed for ${ticker}:`, e.message);
-        return [];
+    let attempt = 0;
+    while (attempt < 3) {
+        try {
+            const chartData = await yahooFinance.chart(ticker, {
+                period1: startDate,
+                period2: new Date(),
+                interval: "5m"
+            });
+            return (chartData.quotes || []).map((q: any) => ({
+                date: q.date,
+                open: q.open || 0,
+                high: q.high || 0,
+                low: q.low || 0,
+                close: q.close || 0,
+                volume: q.volume || 0
+            }));
+        } catch (e: any) {
+            attempt++;
+            console.error(`[YAHOO] 5-minute historical fetch failed for ${ticker} (Attempt ${attempt}):`, e.message);
+            if (attempt >= 3) return [];
+            await new Promise(resolve => setTimeout(resolve, attempt * 2000 + Math.random() * 1000));
+        }
     }
+    return [];
   }
 
   static async getCurrentPrices(symbols: string[]) {

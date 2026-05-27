@@ -77,7 +77,7 @@ export class VolumeRadarScanner {
             } catch (e: any) {
                  // Fail silently per ticker to keep loop running
             }
-            await delay(200);
+            await delay(1500); // Increased delay to avoid rate limits
         }
         console.log(`[RADAR] Successfully derived baselines for ${loadedCount}/${INTRADAY_STOCKS.length} stocks.`);
         
