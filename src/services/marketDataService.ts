@@ -94,7 +94,20 @@ export const INTRADAY_STOCKS: string[] = [
   "SETFNIF50",
   "MANORAMA",
   "SATIN",
-  "BHARTIARTL"
+  "BHARTIARTL",
+  "360ONE",
+  "3MINDIA",
+  "AARTIDRUGS",
+  "AARTIIND",
+  "AARTIPHARM",
+  "AAVAS",
+  "ABB",
+  "ABBOTINDIA",
+  "ABCAPITAL",
+  "ABFRL",
+  "ABREL",
+  "ABSLAMC",
+  "ACC"
 ];
 
 export const INDICES = [
