@@ -90,25 +90,8 @@ export const MTF_MARGINS: Record<string, number> = {
 
 export const MTF_STOCKS: string[] = Object.keys(MTF_MARGINS);
 
-export const INTRADAY_STOCKS: string[] = [
-  "SETFNIF50",
-  "MANORAMA",
-  "SATIN",
-  "BHARTIARTL",
-  "360ONE",
-  "3MINDIA",
-  "AARTIDRUGS",
-  "AARTIIND",
-  "AARTIPHARM",
-  "AAVAS",
-  "ABB",
-  "ABBOTINDIA",
-  "ABCAPITAL",
-  "ABFRL",
-  "ABREL",
-  "ABSLAMC",
-  "ACC"
-];
+import { INTRADAY_STOCKS as IMPORTED_INTRADAY_STOCKS } from './intradayData';
+export const INTRADAY_STOCKS = IMPORTED_INTRADAY_STOCKS;
 
 export const INDICES = [
   "^NSEI",    // NIFTY 50 (Benchmark)

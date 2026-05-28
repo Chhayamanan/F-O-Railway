@@ -1,6 +1,7 @@
 import { DataKeeper } from './dataKeeper';
 import { MstockService } from '../services/mstockService';
-import { MTF_MARGINS, FNO_STOCKS } from '../services/marketDataService';
+import { MTF_MARGINS, FNO_STOCKS, INTRADAY_STOCKS } from '../services/marketDataService';
+import { INTRADAY_MARGINS_DATA } from '../services/intradayData';
 
 export interface ScanResult {
   symbol: string;
@@ -166,12 +167,14 @@ export class ScanEngine {
          // --- INTRADAY ---
          // 1. Check average volume vs current volume (volMultiplier >= intradayVolMult)
          // 2. Buy if +ve, Sell if -ve
-         const isIntradayScanScope = volMultiplier >= intradayVolMult;
+         const isIntradayEligible = INTRADAY_STOCKS.includes(plainSymbol);
+         const isIntradayScanScope = isIntradayEligible && volMultiplier >= intradayVolMult;
          if (isIntradayScanScope) {
              const intradayAction = changePct >= 0 ? 'BUY' : 'SELL';
+             const intradayMarginPct = INTRADAY_MARGINS_DATA[plainSymbol]?.marginPct || mtfMargin;
              const intradayItem: ScanResult = {
                 symbol: plainSymbol, ltp: spotPrice, spotPrice, latestVolume, high180d: cached.high180d, low180d: cached.low180d, avgVol180d: cached.avgVol180d,
-                isCeoDesk: true, changePct, volMultiplier, type: 'INTRADAY', recommendedAction: intradayAction, mtfMargin
+                isCeoDesk: true, changePct, volMultiplier, type: 'INTRADAY', recommendedAction: intradayAction, mtfMargin: intradayMarginPct
              };
              results.push(intradayItem);
              if (!this.ceoDeskItems.find(x => x.symbol === plainSymbol && x.type === 'INTRADAY')) newCeoItems.push(intradayItem);

@@ -1,23 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Play, Search, AlertCircle, TrendingUp, CheckCircle, XCircle, Clock } from 'lucide-react';
-
-interface ScanResult {
-  symbol: string;
-  ltp: number;
-  latestVolume: number;
-  high180d: number;
-  avgVol180d: number;
-  isCeoDesk: boolean;
-  contractValue?: number;
-  riskValue?: number;
-  type?: 'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY';
-  recommendedOption?: 'CALL' | 'PUT';
-  changePct?: number;
-  volMultiplier?: number;
-  mtfMargin?: number;
-  message?: string;
-  qty?: number;
-}
+import { ScanResult } from './core/scanEngine';
 
 import HistoricalDataTab from './components/HistoricalDataTab';
 import Radar5mTab from './components/Radar5mTab';
@@ -104,7 +87,7 @@ function App() {
     setIsScanning(false);
   };
 
-  const handleCeoAction = async (symbol: string, action: 'BUY' | 'HOLD' | 'CANCEL', type: 'FUT' | 'OPTIONS' = 'FUT') => {
+  const handleCeoAction = async (symbol: string, action: 'BUY' | 'HOLD' | 'CANCEL', type: 'FUT' | 'OPTIONS' | 'MTF' | 'INTRADAY' | 'RADAR' = 'FUT') => {
     try {
       addLog(`Sending ${action} directive for ${symbol} (${type})...`);
       const res = await fetch('/api/scan/ceo-action', {
@@ -477,7 +460,7 @@ function App() {
                  <div className="p-4 border-b border-zinc-800 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
                     <div className="flex items-center gap-3">
                        <Search className="text-zinc-400" />
-                       <h2 className="text-lg font-medium">{activeTab === 'RADAR' ? 'Scan Scope (Radar)' : `Scan Scope (${activeTab})`}</h2>
+                       <h2 className="text-lg font-medium">{`Scan Scope (${activeTab})`}</h2>
                     </div>
                     <div className="flex items-center gap-4 flex-wrap justify-end">
                     </div>
