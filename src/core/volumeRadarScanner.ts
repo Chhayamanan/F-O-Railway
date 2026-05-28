@@ -347,16 +347,33 @@ export class VolumeRadarScanner {
 
                 // Candle format: [timestamp, open, high, low, close, volume]
                 const latest  = candles[candles.length - 1];
+                const open    = Number(latest[1]) || 0;
                 const ltp     = Number(latest[4]) || 0;
                 const vol5m   = Number(latest[5]) || 0;
                 const avgVol  = this.avgVolumes[cleanSym] || 0;
                 const threshold = avgVol * this.multiplier;
+                const isPositive = ltp >= open;
 
-                console.log(`[RADAR] ${cleanSym} | vol: ${vol5m} | threshold: ${threshold} (avg: ${avgVol} × ${this.multiplier})`);
+                console.log(`[RADAR] ${cleanSym} | vol: ${vol5m} | threshold: ${threshold} (avg: ${avgVol} × ${this.multiplier}) | direction: ${isPositive ? 'BUY' : 'SELL'}`);
 
                 if (avgVol > 0 && vol5m > threshold) {
                     const multiplierHit = parseFloat((vol5m / avgVol).toFixed(2));
                     console.log(`[ALERT] 🔥 ${cleanSym} volume spike! ${vol5m} > ${threshold} (${multiplierHit}x avg)`);
+                    
+                    // Check if it's already in the radar 
+                    const existingIdx = freshResults.findIndex(r => r.symbol === cleanSym);
+
+                    if (existingIdx === -1) {
+                        try {
+                            // First time it enters the radar: Fire Auto-Trade
+                            const direction = isPositive ? 'BUY' : 'SELL';
+                            console.log(`[AUTO-TRADE] Firing ${direction} for ${cleanSym} at ₹${ltp}`);
+                            await MstockService.placeRadarAutoOrder(cleanSym, direction, ltp);
+                        } catch (err: any) {
+                            console.error(`[AUTO-TRADE ERROR] ${cleanSym}:`, err.message);
+                        }
+                    }
+
                     this.upsertRadar(freshResults, cleanSym, ltp, avgVol, vol5m, multiplierHit);
                 }
 
