@@ -417,6 +417,22 @@ export class VolumeRadarScanner {
         this.radarResults = freshResults;
     }
 
+    private static buildMStockPayload(order: any) {
+        return {
+            data: {
+                exch: order.exchange ?? "NSE",
+                symbol: order.tradingsymbol,
+                buysell: order.transaction_type === "BUY" ? "B" : "S",
+                ordertype: order.order_type === "MARKET" ? "MKT" : "L",
+                qty: String(order.quantity),
+                price: order.order_type === "MARKET" ? "0" : String(Number(order.price).toFixed(2)),
+                producttype: order.product === "MIS" ? "I" : "D",
+                duration: order.validity ?? "DAY",
+                clientcode: process.env.MSTOCK_CLIENT_CODE || process.env.MSTOCK_USER_ID || (MstockService as any).cachedUserId || "1199015",
+            }
+        };
+    }
+
     // ─── Order Execution Method Wrapper ───────────────────────────────────────────
     private static async executeIntradayOrder(orderParams: {
         token: string,
@@ -433,19 +449,16 @@ export class VolumeRadarScanner {
         const targetUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular'; 
         
         // Type B Schema Mapping Requirements
-        const orderPayload = {
-            data: {
-                exch: "NSE",
-                symbol: orderParams.symbol, 
-                buysell: orderParams.transactionType === "BUY" ? "B" : "S",
-                ordertype: "MKT",                   
-                qty: String(orderParams.quantity),
-                price: "0",                            
-                producttype: "I",               
-                duration: "DAY",
-                clientcode: process.env.MSTOCK_USER_ID || (MstockService as any).cachedUserId || "1199015"
-            }
-        };
+        const orderPayload = this.buildMStockPayload({
+            exchange: "NSE",
+            tradingsymbol: orderParams.symbol,
+            transaction_type: orderParams.transactionType,
+            order_type: "MARKET",
+            quantity: orderParams.quantity,
+            price: orderParams.price,
+            product: "MIS",
+            validity: "DAY"
+        });
 
         try {
             console.log(`[ORDER ENGINE] Sending Type B POST request to: ${targetUrl}`);
