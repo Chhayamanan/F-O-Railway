@@ -306,8 +306,8 @@ export class VolumeRadarScanner {
             if (token && apiKey && symboltoken) {
                 try {
                     const response = await axios({
-                        method: 'POST',                          // POST avoids GET-body stripping
-                        url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
+                        method: 'GET',
+                        url: 'https://api.mstock.trade/openapi/typea/instruments/intraday',
                         headers: {
                             'X-Mirae-Version': '1',
                             'Authorization': `Bearer ${token}`,
@@ -317,10 +317,10 @@ export class VolumeRadarScanner {
                             'X-ClientPublicIP': publicIp,
                             'X-MACAddress': '00:00:00:00:00:00'
                         },
-                        data: {
-                            exchange: 'NSE',                     // string name, not numeric
+                        params: {
+                            exchange: 'NSE',
                             symboltoken,
-                            interval: 'FIVE_MINUTE'              // check MStock docs for exact value
+                            interval: 'FIVE_MINUTE'
                         },
                         timeout: 5000
                     });
