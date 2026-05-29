@@ -426,46 +426,52 @@ export class VolumeRadarScanner {
         target: number,
         stoploss: number
     }) {
-        // Strictly Type B Action Endpoint Configuration
-        const targetUrl = 'https://api.mstock.trade/openapi/typeb/orders/placeOrder'; 
+        // Correct Type B Order Placement Route Spec
+        const targetUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular'; 
         
-        const payload = {
-            exchange: "1",                         // Type B requires numeric string IDs ("1" = NSE)
+        // Type B Schema Mapping Requirements
+        const orderPayload = {
+            variety: "NORMAL",
+            tradingsymbol: `${orderParams.symboltoken}-EQ`, // m.Stock tracking string structure
             symboltoken: orderParams.symboltoken,
+            exchange: "NSE",                       // Type B order routing requires "NSE" text string
             transactiontype: orderParams.transactionType, // "BUY" or "SELL"
+            ordertype: "MARKET",                   
             quantity: orderParams.quantity,        // "1"
-            ordertype: "MARKET",                   // Instant execution at market price
-            producttype: "MIS",                    // Strictly Intraday Position
-            variety: "NORMAL",                     // Clears the variety validation restriction block
+            producttype: "INTRADAY",               // Type B uses "INTRADAY", not "MIS"
             price: "0",                            
             triggerprice: "0",
-            duration: "DAY"
-        };
-
-        const headers = {
-            'X-Mirae-Version': '1',
-            'Authorization': `Bearer ${orderParams.token}`,
-            'X-PrivateKey': orderParams.apiKey,   // Required header configuration for Type B Validation Keys
-            'Content-Type': 'application/json'
+            duration: "DAY",
+            // Pass your calculated risk management metrics
+            booktarget: orderParams.target.toString(),
+            bookstoploss: orderParams.stoploss.toString()
         };
 
         try {
-            console.log(`[ORDER ENGINE] Dispatching Ticket to Type B Gateway: ${targetUrl}`);
+            console.log(`[ORDER ENGINE] Sending Type B GET request to: ${targetUrl}`);
+            
             const orderResponse = await axios({
-                method: 'POST', // Accepted method for the active /placeOrder route
+                method: 'GET', // Type B uses GET with parameters passed in the request body
                 url: targetUrl,
-                headers: headers,
-                data: payload
+                headers: {
+                    'X-Mirae-Version': '1',
+                    'Authorization': `Bearer ${orderParams.token}`,
+                    'X-PrivateKey': orderParams.apiKey,
+                    'Content-Type': 'application/json'
+                },
+                data: orderPayload
             });
 
-            const status = orderResponse.data?.status;
-            if (status === true || status === "success" || orderResponse.data?.message === "SUCCESS") {
-                console.log(`[ORDER FULFILLED] Type B Response:`, JSON.stringify(orderResponse.data));
-                console.log(`[RISK ACTIVE] Intraday entry verified. Target (+4%): ${orderParams.target}, SL (-2%): ${orderParams.stoploss}`);
+            // m.Stock returns a boolean string or true status flag upon completion
+            const isSuccess = orderResponse.data?.status === true || orderResponse.data?.status === "true" || orderResponse.data?.message === "SUCCESS";
+            
+            if (isSuccess) {
+                console.log(`[ORDER FULFILLED] Success Payload:`, JSON.stringify(orderResponse.data?.data));
+                console.log(`[RISK RUNNING] Intraday target active. Target (+4%): ${orderParams.target}, SL (-2%): ${orderParams.stoploss}`);
                 return;
             }
             
-            console.error(`[ORDER REJECTED] Broker Engine Core Exception:`, JSON.stringify(orderResponse.data));
+            console.error(`[ORDER REJECTED] Broker Validation Failure:`, JSON.stringify(orderResponse.data));
 
         } catch (error: any) {
             console.error(`[ORDER TRANSMISSION ERROR]: Type B Route Status ${error.response?.status || 'Unknown'}`, error.response?.data || error.message);
