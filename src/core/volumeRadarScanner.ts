@@ -33,6 +33,9 @@ export class VolumeRadarScanner {
     public static timeoutId: any = null;
     public static multiplier   = 10;
 
+    // ─── DEBUG: Set to true to place a test DELIVERY (CNC) order instead of intraday ───
+    private static TEST_DELIVERY_MODE = true; // ← flip to false to go back to MIS
+
     // symbol → average 5m volume (populated once per day)
     public static avgVolumes: Record<string, number> = {};
 
@@ -418,18 +421,20 @@ export class VolumeRadarScanner {
     }
 
     private static buildMStockPayload(order: any) {
+        const producttype = this.TEST_DELIVERY_MODE
+            ? "D"   // CNC / Delivery
+            : (order.product === "MIS" ? "I" : "D");
+
         return {
-            data: {
-                exch: order.exchange ?? "NSE",
-                symbol: order.tradingsymbol,
-                buysell: order.transaction_type === "BUY" ? "B" : "S",
-                ordertype: order.order_type === "MARKET" ? "MKT" : "L",
-                qty: String(order.quantity),
-                price: order.order_type === "MARKET" ? "0" : String(Number(order.price).toFixed(2)),
-                producttype: order.product === "MIS" ? "I" : "D",
-                duration: order.validity ?? "DAY",
-                clientcode: process.env.MSTOCK_CLIENT_CODE || process.env.MSTOCK_USER_ID || (MstockService as any).cachedUserId || "1199015",
-            }
+            exch: order.exchange ?? "NSE",
+            symbol: order.tradingsymbol,
+            buysell: order.transaction_type === "BUY" ? "B" : "S",
+            ordertype: order.order_type === "MARKET" ? "MKT" : "L",
+            qty: String(order.quantity),
+            price: order.order_type === "MARKET" ? "0" : String(Number(order.price).toFixed(2)),
+            producttype,
+            duration: order.validity ?? "DAY",
+            clientcode: process.env.MSTOCK_CLIENT_CODE || process.env.MSTOCK_USER_ID || (MstockService as any).cachedUserId || "1199015",
         };
     }
 
@@ -445,6 +450,14 @@ export class VolumeRadarScanner {
         target: number,
         stoploss: number
     }) {
+        // ─── GUARD: No new orders after 15:20 IST ────────────────────────────
+        const istNow   = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+        const totalMin = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
+        if (totalMin >= 15 * 60 + 20) {
+            console.log(`[ORDER ENGINE] Skipping ${orderParams.symbol} — past 15:20 cutoff.`);
+            return;
+        }
+
         // Correct Type B Order Placement Route Spec
         const targetUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular'; 
         
@@ -456,12 +469,13 @@ export class VolumeRadarScanner {
             order_type: "MARKET",
             quantity: orderParams.quantity,
             price: orderParams.price,
-            product: "MIS",
+            product: this.TEST_DELIVERY_MODE ? "CNC" : "MIS",
             validity: "DAY"
         });
 
         try {
-            console.log(`[ORDER ENGINE] Sending Type B POST request to: ${targetUrl}`);
+            console.log(`[ORDER ENGINE] Sending Type B POST to: ${targetUrl}`);
+            console.log(`[ORDER ENGINE] Mode: ${this.TEST_DELIVERY_MODE ? "DELIVERY (CNC)" : "INTRADAY (MIS)"}`);
             console.log('[ORDER PAYLOAD]', JSON.stringify(orderPayload, null, 2));
             
             const orderResponse = await axios({
@@ -473,14 +487,15 @@ export class VolumeRadarScanner {
                     'X-PrivateKey': orderParams.apiKey,
                     'Content-Type': 'application/json'
                 },
-                data: orderPayload
+                data: { data: orderPayload }
             });
 
             // m.Stock returns a boolean string or true status flag upon completion
             const isSuccess = orderResponse.data?.status === true || orderResponse.data?.status === "true" || orderResponse.data?.message === "SUCCESS";
             
             if (isSuccess) {
-                console.log(`[ORDER FULFILLED] Success Payload:`, JSON.stringify(orderResponse.data?.data));
+                console.log(`[ORDER FULFILLED] ${orderParams.symbol} ${orderParams.transactionType} — ${this.TEST_DELIVERY_MODE ? "CNC" : "MIS"}`);
+                console.log(`[ORDER DATA]`, JSON.stringify(orderResponse.data?.data));
                 console.log(`[RISK RUNNING] Intraday target active. Target (+4%): ${orderParams.target}, SL (-2%): ${orderParams.stoploss}`);
                 return;
             }
@@ -488,7 +503,10 @@ export class VolumeRadarScanner {
             console.error(`[ORDER REJECTED] Broker Validation Failure:`, JSON.stringify(orderResponse.data));
 
         } catch (error: any) {
-            console.error(`[ORDER TRANSMISSION ERROR]: Type B Route Status ${error.response?.status || 'Unknown'}`, error.response?.data || error.message);
+            console.error(
+                `[ORDER TRANSMISSION ERROR] Status ${error.response?.status || 'Unknown'}`,
+                error.response?.data || error.message
+            );
         }
     }
 
