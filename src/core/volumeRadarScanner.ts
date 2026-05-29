@@ -434,14 +434,16 @@ export class VolumeRadarScanner {
         
         // Type B Schema Mapping Requirements
         const orderPayload = {
-            exchange: "NSE",
-            tradingsymbol: orderParams.symbol, 
-            transaction_type: orderParams.transactionType,
-            order_type: "MARKET",                   
-            quantity: orderParams.quantity,
-            price: orderParams.price,                            
-            product: "MIS",               
-            validity: "DAY"
+            data: JSON.stringify({
+                exchange: "NSE",
+                tradingsymbol: orderParams.symbol, 
+                transaction_type: orderParams.transactionType,
+                order_type: "MARKET",                   
+                quantity: String(orderParams.quantity),
+                price: orderParams.price.toFixed(2),                            
+                product: "MIS",               
+                validity: "DAY"
+            })
         };
 
         try {
