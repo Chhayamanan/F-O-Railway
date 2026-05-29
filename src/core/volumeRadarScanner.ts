@@ -434,7 +434,7 @@ export class VolumeRadarScanner {
         
         // Type B Schema Mapping Requirements
         const orderPayload = {
-            data: JSON.stringify({
+            data: {
                 exchange: "NSE",
                 tradingsymbol: orderParams.symbol, 
                 transaction_type: orderParams.transactionType,
@@ -443,11 +443,12 @@ export class VolumeRadarScanner {
                 price: orderParams.price.toFixed(2),                            
                 product: "MIS",               
                 validity: "DAY"
-            })
+            }
         };
 
         try {
             console.log(`[ORDER ENGINE] Sending Type B POST request to: ${targetUrl}`);
+            console.log('[ORDER PAYLOAD]', JSON.stringify(orderPayload, null, 2));
             
             const orderResponse = await axios({
                 method: 'POST',
