@@ -435,14 +435,15 @@ export class VolumeRadarScanner {
         // Type B Schema Mapping Requirements
         const orderPayload = {
             data: {
-                exchange: "NSE",
-                tradingsymbol: orderParams.symbol, 
-                transaction_type: orderParams.transactionType,
-                order_type: "MARKET",                   
-                quantity: String(orderParams.quantity),
-                price: orderParams.price.toFixed(2),                            
-                product: "MIS",               
-                validity: "DAY"
+                exch: "NSE",
+                symbol: orderParams.symbol, 
+                buysell: orderParams.transactionType === "BUY" ? "B" : "S",
+                ordertype: "MKT",                   
+                qty: String(orderParams.quantity),
+                price: "0",                            
+                producttype: "I",               
+                duration: "DAY",
+                clientcode: process.env.MSTOCK_USER_ID || (MstockService as any).cachedUserId || "1199015"
             }
         };
 
