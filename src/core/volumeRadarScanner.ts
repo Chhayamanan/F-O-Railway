@@ -428,7 +428,7 @@ export class VolumeRadarScanner {
             ordertype:   order.order_type === "MARKET" ? "MKT" : "L",
             qty:         String(order.quantity),
             price:       order.order_type === "MARKET" ? "0" : String(Number(order.price).toFixed(2)),
-            producttype: "D",   // ← CNC/Delivery (was "I" for MIS/Intraday)
+            producttype: "D",
             duration:    order.validity ?? "DAY",
             clientcode:  process.env.MSTOCK_CLIENT_CODE || "MA2468211",
         };
@@ -446,18 +446,8 @@ export class VolumeRadarScanner {
         target: number,
         stoploss: number
     }) {
-        // ─── GUARD: No new orders after 15:20 IST ────────────────────────────
-        const istNow   = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-        const totalMin = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
-        if (totalMin >= 15 * 60 + 20) {
-            console.log(`[ORDER ENGINE] Skipping ${orderParams.symbol} — past 15:20 cutoff.`);
-            return;
-        }
+        const targetUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
 
-        // Correct Type B Order Placement Route Spec
-        const targetUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular'; 
-        
-        // Type B Schema Mapping Requirements
         const orderPayload = this.buildMStockPayload({
             exchange:         "NSE",
             tradingsymbol:    orderParams.symbol,
@@ -465,13 +455,12 @@ export class VolumeRadarScanner {
             order_type:       "MARKET",
             quantity:         orderParams.quantity,
             price:            orderParams.price,
-            product:          "CNC",   // ← was "MIS"
+            product:          "CNC",  // ← Delivery
             validity:         "DAY"
         });
 
         try {
             console.log(`[ORDER ENGINE] Sending Type B POST to: ${targetUrl}`);
-            console.log(`[ORDER ENGINE] Mode: ${this.TEST_DELIVERY_MODE ? "DELIVERY (CNC)" : "INTRADAY (MIS)"}`);
             console.log('[ORDER PAYLOAD]', JSON.stringify(orderPayload, null, 2));
             
             const orderResponse = await axios({
@@ -486,17 +475,16 @@ export class VolumeRadarScanner {
                 data: { data: orderPayload }
             });
 
-            // m.Stock returns a boolean string or true status flag upon completion
-            const isSuccess = orderResponse.data?.status === true || orderResponse.data?.status === "true" || orderResponse.data?.message === "SUCCESS";
+            const isSuccess = orderResponse.data?.status === true
+                           || orderResponse.data?.status === "true"
+                           || orderResponse.data?.message === "SUCCESS";
             
             if (isSuccess) {
-                console.log(`[ORDER FULFILLED] ${orderParams.symbol} ${orderParams.transactionType} — ${this.TEST_DELIVERY_MODE ? "CNC" : "MIS"}`);
-                console.log(`[ORDER DATA]`, JSON.stringify(orderResponse.data?.data));
-                console.log(`[RISK RUNNING] Intraday target active. Target (+4%): ${orderParams.target}, SL (-2%): ${orderParams.stoploss}`);
+                console.log(`[ORDER FULFILLED]`, JSON.stringify(orderResponse.data?.data));
                 return;
             }
             
-            console.error(`[ORDER REJECTED] Broker Validation Failure:`, JSON.stringify(orderResponse.data));
+            console.error(`[ORDER REJECTED]`, JSON.stringify(orderResponse.data));
 
         } catch (error: any) {
             console.error(
