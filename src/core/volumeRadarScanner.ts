@@ -1,5 +1,6 @@
 import { INTRADAY_STOCKS } from '../services/marketDataService';
 import { MstockService } from '../services/mstockService';
+import { YahooService } from '../services/yahooService';
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
@@ -39,23 +40,18 @@ export class VolumeRadarScanner {
     // live radar results
     public static radarResults: VolumeRadarItem[] = [];
 
-    // ── STEP 1: Build baselines from Yahoo (run once manually each morning) ──
+    // ── STEP 1: Build baselines from Yahoo (with automatic MStock / Yahoo Finance fallback) ──
     public static async initializeBaselines() {
-        console.log("[BASELINE] Fetching 5m baselines from MStock...");
+        console.log("[BASELINE] Fetching 5m baselines from MStock/Yahoo...");
 
-        let token: string;
+        let token: string | null = null;
         try {
             token = await MstockService.getMstockJwtToken();
         } catch (err: any) {
-            console.error("[BASELINE] Auth failed:", err.message);
-            return;
+            console.warn("[BASELINE] MStock Auth failed, falling back to Yahoo Finance:", err.message);
         }
 
         const apiKey = process.env.MSTOCK_API_KEY;
-        if (!apiKey) {
-            console.error("[BASELINE] MSTOCK_API_KEY not set.");
-            return;
-        }
 
         // Fetch container's public IP to satisfy MStock IP binding
         let publicIp = '127.0.0.1';
@@ -66,7 +62,7 @@ export class VolumeRadarScanner {
                 console.log(`[BASELINE] Detected public IP: ${publicIp}`);
             }
         } catch (e: any) {
-            console.warn("[BASELINE] Failed to fetch public IP, falling back to 127.0.0.1");
+            // Ignore silently
         }
 
         const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -91,70 +87,79 @@ export class VolumeRadarScanner {
         console.log(`[BASELINE] Window: ${fromdate} → ${todate}`);
 
         for (const sym of INTRADAY_STOCKS) {
-            const cleanSym    = sym.replace('.NS', '');
-            const symboltoken = INTRADAY_TOKEN_MAP[cleanSym]
-                             || MstockService.getEqTokenOnlySync(cleanSym);
+            const cleanSym = sym.replace('.NS', '');
+            let volumes: number[] = [];
 
-            if (!symboltoken) {
-                console.warn(`[BASELINE] No token for ${cleanSym}, skipping.`);
-                continue;
+            // 1. Try MStock First if authorized
+            if (token && apiKey) {
+                const symboltoken = INTRADAY_TOKEN_MAP[cleanSym] || MstockService.getEqTokenOnlySync(cleanSym);
+                if (symboltoken) {
+                    try {
+                        const response = await axios({
+                            method: 'POST',
+                            url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
+                            headers: {
+                                'X-Mirae-Version':  '1',
+                                'Authorization':    `Bearer ${token}`,
+                                'X-PrivateKey':     apiKey,
+                                'Content-Type':     'application/json',
+                                'X-ClientLocalIP':  '127.0.0.1',
+                                'X-ClientPublicIP': publicIp,
+                                'X-MACAddress':     '00:00:00:00:00:00'
+                            },
+                            data: {
+                                exchange: 'NSE',
+                                symboltoken,
+                                interval: 'FIVE_MINUTE'
+                            },
+                            timeout: 5000
+                        });
+
+                        const ok = response.data?.status === true || response.data?.status === "true";
+                        if (ok) {
+                            const candles: any[][] = response.data?.data?.candles;
+                            if (Array.isArray(candles) && candles.length > 0) {
+                                volumes = candles
+                                    .map(c => Number(c[5]))
+                                    .filter(v => !isNaN(v) && v > 0);
+                                if (volumes.length > 0) {
+                                    console.log(`[BASELINE] ${cleanSym} baseline loaded from MStock (${volumes.length} candles).`);
+                                }
+                            }
+                        }
+                    } catch (err: any) {
+                        // Suppress block and carry on to Yahoo fallback
+                    }
+                }
             }
 
-            try {
-                const response = await axios({
-                    method: 'POST',
-                    url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
-                    headers: {
-                        'X-Mirae-Version':  '1',
-                        'Authorization':    `Bearer ${token}`,
-                        'X-PrivateKey':     apiKey,
-                        'Content-Type':     'application/json',
-                        'X-ClientLocalIP':  '127.0.0.1',
-                        'X-ClientPublicIP': publicIp,
-                        'X-MACAddress':     '00:00:00:00:00:00'
-                    },
-                    data: {
-                        exchange: 'NSE', // Keep this consistent
-                        symboltoken,
-                        interval: 'FIVE_MINUTE', // Keep this consistent
-                        fromdate,
-                        todate
+            // 2. Fallback to Yahoo Finance
+            if (volumes.length === 0) {
+                try {
+                    const yahooCandles = await YahooService.get5MinData(cleanSym, 7);
+                    if (yahooCandles && yahooCandles.length > 0) {
+                        volumes = yahooCandles
+                            .map((c: any) => Number(c.volume))
+                            .filter(v => !isNaN(v) && v > 0);
+                        if (volumes.length > 0) {
+                            console.log(`[BASELINE] ${cleanSym} baseline loaded from Yahoo Finance fallback (${volumes.length} candles).`);
+                        }
                     }
-                });
-
-                const ok = response.data?.status === true || response.data?.status === "true";
-                if (!ok) {
-                    console.warn(`[BASELINE] MStock rejected ${cleanSym}:`, JSON.stringify(response.data));
-                    continue;
+                } catch (err: any) {
+                    console.warn(`[BASELINE] Yahoo fallback failed for ${cleanSym}:`, err.message);
                 }
+            }
 
-                const candles: any[][] = response.data?.data?.candles;
-                if (!Array.isArray(candles) || candles.length === 0) {
-                    console.warn(`[BASELINE] No candles for ${cleanSym}`);
-                    continue;
-                }
-
-                // candle: [timestamp, open, high, low, close, volume]
-                const volumes = candles
-                    .map(c => Number(c[5]))
-                    .filter(v => !isNaN(v) && v > 0);
-
-                if (volumes.length === 0) {
-                    console.warn(`[BASELINE] Empty volumes for ${cleanSym}`);
-                    continue;
-                }
-
+            if (volumes.length > 0) {
                 const avg = Math.round(volumes.reduce((a, b) => a + b, 0) / volumes.length);
                 this.avgVolumes[cleanSym] = avg;
                 saved.push({ symbol: cleanSym, avgVol: avg });
-
-                console.log(`[BASELINE] ${cleanSym} → avg vol: ${avg} (${volumes.length} candles)`);
-
-            } catch (err: any) {
-                console.error(`[BASELINE] Failed for ${cleanSym}:`, err.response?.data || err.message);
+                console.log(`[BASELINE] ${cleanSym} → avg vol: ${avg}`);
+            } else {
+                console.warn(`[BASELINE] Failed to get baselines for ${cleanSym}`);
             }
 
-            await delay(300); // MStock is your own broker — tighter delay is fine
+            await delay(150); // throttle between stocks
         }
 
         console.log(`[BASELINE] Done. ${saved.length}/${INTRADAY_STOCKS.length} stocks loaded.`);
@@ -252,19 +257,14 @@ export class VolumeRadarScanner {
     // ── STEP 3: One full scan round across all stocks ─────────────────────────
     private static async runScanRound() {
         // Auth
-        let token: string;
+        let token: string | null = null;
         try {
             token = await MstockService.getMstockJwtToken();
         } catch (err: any) {
-            console.error("[RADAR] Auth failed:", err.message);
-            return;
+            console.warn("[RADAR] MStock Auth failed. Proceeding with Yahoo fallback:", err.message);
         }
 
         const apiKey = process.env.MSTOCK_API_KEY;
-        if (!apiKey) {
-            console.error("[RADAR] MSTOCK_API_KEY not set.");
-            return;
-        }
 
         // Fetch container's public IP to satisfy MStock IP binding
         let publicIp = '127.0.0.1';
@@ -291,58 +291,117 @@ export class VolumeRadarScanner {
 
         for (const sym of INTRADAY_STOCKS) {
             const cleanSym = sym.replace('.NS', '');
+            
+            const avgVol = this.avgVolumes[cleanSym] || 0;
+            if (avgVol <= 0) {
+                continue; // Skip scanning if no baseline volumes exist for this stock
+            }
+
             const symboltoken = INTRADAY_TOKEN_MAP[cleanSym] || MstockService.getEqTokenOnlySync(cleanSym);
 
-            if (!symboltoken) {
-                console.warn(`[RADAR] No token for ${cleanSym}, skipping.`);
+            let latestCandle: { open: number; close: number; volume: number } | null = null;
+            let fetchedViaYahoo = false;
+
+            // 1. Try MStock
+            if (token && apiKey && symboltoken) {
+                try {
+                    const response = await axios({
+                        method: 'POST',                          // POST avoids GET-body stripping
+                        url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
+                        headers: {
+                            'X-Mirae-Version': '1',
+                            'Authorization': `Bearer ${token}`,
+                            'X-PrivateKey': apiKey,
+                            'Content-Type': 'application/json',
+                            'X-ClientLocalIP': '127.0.0.1',
+                            'X-ClientPublicIP': publicIp,
+                            'X-MACAddress': '00:00:00:00:00:00'
+                        },
+                        data: {
+                            exchange: 'NSE',                     // string name, not numeric
+                            symboltoken,
+                            interval: 'FIVE_MINUTE'              // check MStock docs for exact value
+                        },
+                        timeout: 5000
+                    });
+
+                    const ok = response.data?.status === true || response.data?.status === "true";
+                    if (ok) {
+                        const candles = response.data?.data?.candles;
+                        if (Array.isArray(candles) && candles.length > 0) {
+                            let match = candles.find((c: any) => {
+                                const ts = String(c[0]);
+                                return ts.includes(fromdate) || ts.replace(/[T_]/g, ' ').includes(fromdate);
+                            });
+                            if (!match) {
+                                match = candles[candles.length - 1];
+                            }
+                            if (match) {
+                                latestCandle = {
+                                    open: Number(match[1]) || 0,
+                                    close: Number(match[4]) || 0,
+                                    volume: Number(match[5]) || 0
+                                };
+                            }
+                        }
+                    }
+                } catch (err: any) {
+                    // Suppress block and carry on to Yahoo fallback
+                }
+            }
+
+            // 2. Fallback to Yahoo Finance
+            if (!latestCandle) {
+                try {
+                    const yahooCandles = await YahooService.get5MinData(cleanSym, 1);
+                    if (yahooCandles && yahooCandles.length > 0) {
+                        const targetStart = new Date(fromdate.replace(' ', 'T') + "+05:30").getTime();
+                        const targetEnd = new Date(todate.replace(' ', 'T') + "+05:30").getTime();
+
+                        let match = yahooCandles.find((c: any) => {
+                            const ms = c.date.getTime();
+                            return Math.abs(ms - targetStart) < 60 * 1000;
+                        });
+
+                        if (!match) {
+                            const validCandles = yahooCandles.filter((c: any) => c.date.getTime() <= targetEnd);
+                            if (validCandles.length > 0) {
+                                match = validCandles[validCandles.length - 1];
+                            }
+                        }
+
+                        if (!match) {
+                            match = yahooCandles[yahooCandles.length - 1];
+                        }
+
+                        if (match) {
+                            latestCandle = {
+                                open: match.open,
+                                close: match.close,
+                                volume: match.volume
+                            };
+                            fetchedViaYahoo = true;
+                        }
+                    }
+                } catch (err: any) {
+                    console.error(`[RADAR-YAHOO-FALLBACK] Failed for ${cleanSym}:`, err.message);
+                }
+            }
+
+            if (!latestCandle) {
+                console.log(`[RADAR] No candles for ${cleanSym} in this window.`);
                 continue;
             }
 
+            const open  = latestCandle.open;
+            const ltp   = latestCandle.close;
+            const vol5m = latestCandle.volume;
+            const threshold = avgVol * this.multiplier;
+            const isPositive = ltp >= open;
+
+            console.log(`[RADAR] ${cleanSym} | vol: ${vol5m} | threshold: ${threshold} (avg: ${avgVol} × ${this.multiplier}) | direction: ${isPositive ? 'BUY' : 'SELL'}${fetchedViaYahoo ? ' (Yahoo)' : ''}`);
+
             try {
-                const response = await axios({
-                    method: 'POST',                          // POST avoids GET-body stripping
-                    url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
-                    headers: {
-                        'X-Mirae-Version': '1',
-                        'Authorization': `Bearer ${token}`,
-                        'X-PrivateKey': apiKey,
-                        'Content-Type': 'application/json',
-                        'X-ClientLocalIP': '127.0.0.1',
-                        'X-ClientPublicIP': publicIp,
-                        'X-MACAddress': '00:00:00:00:00:00'
-                    },
-                    data: {
-                        exchange: 'NSE',                     // string name, not numeric
-                        symboltoken,
-                        interval: 'FIVE_MINUTE',             // check MStock docs for exact value
-                        fromdate,
-                        todate
-                    }
-                });
-
-                const ok = response.data?.status === true || response.data?.status === "true";
-                if (!ok) {
-                    console.error(`[RADAR] MStock rejected ${cleanSym}:`, JSON.stringify(response.data));
-                    continue;
-                }
-
-                const candles = response.data?.data?.candles;
-                if (!Array.isArray(candles) || candles.length === 0) {
-                    console.log(`[RADAR] No candles for ${cleanSym} in this window.`);
-                    continue;
-                }
-
-                // Candle format: [timestamp, open, high, low, close, volume]
-                const latest  = candles[candles.length - 1];
-                const open    = Number(latest[1]) || 0;
-                const ltp     = Number(latest[4]) || 0;
-                const vol5m   = Number(latest[5]) || 0;
-                const avgVol  = this.avgVolumes[cleanSym] || 0;
-                const threshold = avgVol * this.multiplier;
-                const isPositive = ltp >= open;
-
-                console.log(`[RADAR] ${cleanSym} | vol: ${vol5m} | threshold: ${threshold} (avg: ${avgVol} × ${this.multiplier}) | direction: ${isPositive ? 'BUY' : 'SELL'}`);
-
                 if (avgVol > 0 && vol5m > threshold) {
                     const multiplierHit = parseFloat((vol5m / avgVol).toFixed(2));
                     console.log(`[ALERT] 🔥 ${cleanSym} volume spike! ${vol5m} > ${threshold} (${multiplierHit}x avg)`);
@@ -371,6 +430,7 @@ export class VolumeRadarScanner {
             await delay(150); // throttle between stocks
         }
 
+        freshResults.sort((a, b) => b.multiplierHit - a.multiplierHit);
         this.radarResults = freshResults;
         console.log(`[RADAR] Scan complete. Alerts: ${this.radarResults.length}`);
     }
