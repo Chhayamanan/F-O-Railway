@@ -33,9 +33,6 @@ export class VolumeRadarScanner {
     public static timeoutId: any = null;
     public static multiplier   = 10;
 
-    // ─── DEBUG: Set to true to place a test DELIVERY (CNC) order instead of intraday ───
-    private static TEST_DELIVERY_MODE = true; // ← flip to false to go back to MIS
-
     // symbol → average 5m volume (populated once per day)
     public static avgVolumes: Record<string, number> = {};
 
@@ -370,42 +367,24 @@ export class VolumeRadarScanner {
                     const priceChange = closePrice - openPrice;
 
                     if (priceChange > 0) {
-                        // 1. BUY SIGNAL: Positive candle structure with high volume backing
-                        const targetPrice = parseFloat((closePrice * 1.04).toFixed(2)); // +4% Target
-                        const stopLossPrice = parseFloat((closePrice * 0.98).toFixed(2)); // -2% Stop Loss
+                        // BUY SIGNAL: Positive candle structure with high volume backing
+                        const targetPrice = parseFloat((closePrice * 1.04).toFixed(2)); // +4% Target guidance
+                        const stopLossPrice = parseFloat((closePrice * 0.98).toFixed(2)); // -2% Stop Loss guidance
 
-                        console.log(`[TRADE ENGINE] 🟢 BUY Triggered for ${cleanSym} at ${closePrice}. Target: ${targetPrice}, SL: ${stopLossPrice}`);
+                        console.log(`[TRADE ENGINE] 🟢 DELIVERY BUY Triggered for ${cleanSym} at ${closePrice}. Target: ${targetPrice}, SL: ${stopLossPrice}`);
                         
-                        await this.executeIntradayOrder({
+                        await this.executeDeliveryOrder({
                             token,
                             apiKey,
                             symboltoken,
                             symbol: cleanSym,
-                            transactionType: "BUY",
-                            quantity: "1",
-                            price: closePrice,
-                            target: targetPrice,
-                            stoploss: stopLossPrice
+                            quantity: "1", // Adjust order allocation size as necessary
+                            price: closePrice
                         });
 
                     } else if (priceChange < 0) {
-                        // 2. SELL SIGNAL: Negative candle structure (Short Sale) with high volume backing
-                        const targetPrice = parseFloat((closePrice * 0.96).toFixed(2)); // -4% Target for Shorts
-                        const stopLossPrice = parseFloat((closePrice * 1.02).toFixed(2)); // +2% Stop Loss for Shorts
-
-                        console.log(`[TRADE ENGINE] 🔴 SHORT SELL Triggered for ${cleanSym} at ${closePrice}. Target: ${targetPrice}, SL: ${stopLossPrice}`);
-
-                        await this.executeIntradayOrder({
-                            token,
-                            apiKey,
-                            symboltoken,
-                            symbol: cleanSym,
-                            transactionType: "SELL",
-                            quantity: "1",
-                            price: closePrice,
-                            target: targetPrice,
-                            stoploss: stopLossPrice
-                        });
+                        // Skipped: Short selling is unavailable for regular equity delivery products
+                        console.log(`[TRADE ENGINE] 🟡 Negative breakout detected for ${cleanSym} (${priceChange}). Skipping delivery short-sale.`);
                     }
                     // ─── AUTOMATED TRADING EXECUTION MATRIX END HERE ───
                 }
@@ -420,17 +399,26 @@ export class VolumeRadarScanner {
         this.radarResults = freshResults;
     }
 
-    private static buildMStockPayload(order: any) {
+    private static buildMStockPayload(order: {
+        symbol: string,
+        symboltoken: string,
+        transactionType: "BUY",
+        quantity: string,
+        price: number
+    }) {
+        // For MARKET orders, the price field is sent as a string representation
+        const orderPrice = order.price ? String(order.price) : "0";
+
         return {
             variety:           "NORMAL",
-            tradingsymbol:     order.tradingsymbol,
-            symboltoken:       order.symboltoken,
+            tradingsymbol:     `${order.symbol}-EQ`, // Matches documentation schema pattern (e.g., ACC-EQ)
+            symboltoken:       String(order.symboltoken),
             exchange:          "NSE",
-            transactiontype:   order.transaction_type,
-            ordertype:         "LIMIT",
+            transactiontype:   "BUY",                // Restriced to BUY for standard long-only Delivery
+            ordertype:         "MARKET",             // Market order execution
             quantity:          String(order.quantity),
-            producttype:       "DELIVERY",
-            price:             String(Number(order.price).toFixed(2)),
+            producttype:       "DELIVERY",           // Forced strictly to Delivery allocation
+            price:             orderPrice,
             triggerprice:      "0",
             squareoff:         "0",
             stoploss:          "0",
@@ -442,32 +430,29 @@ export class VolumeRadarScanner {
     }
 
     // ─── Order Execution Method Wrapper ───────────────────────────────────────────
-    private static async executeIntradayOrder(orderParams: {
+    private static async executeDeliveryOrder(orderParams: {
         token: string,
         apiKey: string,
         symboltoken: string,
         symbol: string,
-        transactionType: "BUY" | "SELL",
         quantity: string,
-        price: number,
-        target: number,
-        stoploss: number
+        price: number
     }) {
         const targetUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
 
         const orderPayload = this.buildMStockPayload({
-            tradingsymbol:    orderParams.symbol,
+            symbol:           orderParams.symbol,
             symboltoken:      orderParams.symboltoken,
-            transaction_type: orderParams.transactionType,
+            transactionType:  "BUY",
             quantity:         orderParams.quantity,
-            price:            orderParams.price,
+            price:            orderParams.price
         });
 
         try {
-            console.log(`[ORDER ENGINE] Sending Type B POST to: ${targetUrl}`);
+            console.log(`[ORDER ENGINE] Sending Delivery Type B POST to: ${targetUrl}`);
             console.log('[ORDER PAYLOAD]', JSON.stringify(orderPayload, null, 2));
 
-            const orderResponse = await axios({
+            const response = await axios({
                 method: 'POST',
                 url: targetUrl,
                 headers: {
@@ -479,16 +464,16 @@ export class VolumeRadarScanner {
                 data: orderPayload
             });
 
-            const isSuccess = orderResponse.data?.status === true
-                           || orderResponse.data?.status === "true"
-                           || orderResponse.data?.message === "SUCCESS";
+            const isSuccess = response.data?.status === true 
+                           || response.data?.status === "true" 
+                           || response.data?.message === "SUCCESS";
 
             if (isSuccess) {
-                console.log(`[ORDER FULFILLED]`, JSON.stringify(orderResponse.data?.data));
+                console.log(`[ORDER FULFILLED] ID: ${response.data?.data?.orderid}`, JSON.stringify(response.data?.data));
                 return;
             }
 
-            console.error(`[ORDER REJECTED]`, JSON.stringify(orderResponse.data));
+            console.error(`[ORDER REJECTED]`, JSON.stringify(response.data));
 
         } catch (error: any) {
             console.error(
