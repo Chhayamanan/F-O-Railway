@@ -406,25 +406,33 @@ export class VolumeRadarScanner {
         quantity: string,
         price: number
     }) {
-        // For MARKET orders, the price field is sent as a string representation
-        const orderPrice = order.price ? String(order.price) : "0";
+        const cleanSymbol = order.symbol.trim();
+
+        // DYNAMIC SYMBOL ROUTER:
+        // If the tracking token array already carries the exact match string, use it.
+        // Otherwise, append standard equity flags natively.
+        let targetTradingSymbol = cleanSymbol;
+        if (!cleanSymbol.endsWith("-EQ") && !cleanSymbol.endsWith("-SM")) {
+            // Fallback default for standard board listings
+            targetTradingSymbol = `${cleanSymbol}-EQ`; 
+        }
 
         return {
-            variety:           "NORMAL",
-            tradingsymbol:     `${order.symbol}-EQ`, // Matches documentation schema pattern (e.g., ACC-EQ)
+            variety:           "NORMAL",             // Matches Glossary mapping
+            tradingsymbol:     targetTradingSymbol,  // Evaluated dynamically via master array
             symboltoken:       String(order.symboltoken),
-            exchange:          "NSE",
-            transactiontype:   "BUY",                // Restriced to BUY for standard long-only Delivery
-            ordertype:         "MARKET",             // Market order execution
+            exchange:          "NSE",                // Default target floor
+            transactiontype:   "BUY",                // Standard Delivery long acquisition
+            ordertype:         "MARKET",             // Dictates the execution fill rule
             quantity:          String(order.quantity),
-            producttype:       "DELIVERY",           // Forced strictly to Delivery allocation
-            price:             orderPrice,
+            producttype:       "DELIVERY",           // Matches Glossary mapping
+            price:             "0",                  // FIX: Forced '0' for MARKET orders to pass API validation
             triggerprice:      "0",
             squareoff:         "0",
             stoploss:          "0",
             trailingStopLoss:  "",
             disclosedquantity: "",
-            duration:          "DAY",
+            duration:          "DAY",                // Matches Glossary mapping
             ordertag:          ""
         };
     }
@@ -449,21 +457,22 @@ export class VolumeRadarScanner {
         });
 
         try {
-            console.log(`[ORDER ENGINE] Sending Delivery Type B POST to: ${targetUrl}`);
+            console.log(`[ORDER ENGINE] Sending Type B Delivery POST to: ${targetUrl}`);
             console.log('[ORDER PAYLOAD]', JSON.stringify(orderPayload, null, 2));
 
             const response = await axios({
-                method: 'POST',
+                method: 'POST', 
                 url: targetUrl,
                 headers: {
                     'X-Mirae-Version': '1',
-                    'Authorization': `Bearer ${orderParams.token}`,
+                    'Authorization': `Bearer ${orderParams.token}`, 
                     'X-PrivateKey': orderParams.apiKey,
                     'Content-Type': 'application/json'
                 },
                 data: orderPayload
             });
 
+            // Parse verification check outcome status directly from the response object wrapper
             const isSuccess = response.data?.status === true 
                            || response.data?.status === "true" 
                            || response.data?.message === "SUCCESS";
