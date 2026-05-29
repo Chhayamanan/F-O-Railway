@@ -350,17 +350,17 @@ export class VolumeRadarScanner {
                 const closePrice = Number(latestCandle[4]) || 0; // Current Last Traded Price (LTP)
                 const vol5m      = Number(latestCandle[5]) || 0;
 
-                const avgDailyVol = this.avgVolumes[cleanSym] || 0;
-                const targetThreshold = avgDailyVol * this.multiplier;
+                const avg5mVol = this.avgVolumes[cleanSym] || 0;
+                const targetThreshold = avg5mVol * this.multiplier;
 
-                console.log(`[RADAR] ${cleanSym} (${candleTimestamp}) | Latest 5m Vol: ${vol5m} | Radar Threshold: ${targetThreshold} (90-Day Avg: ${avgDailyVol})`);
+                console.log(`[RADAR] ${cleanSym} (${candleTimestamp}) | Latest 5m Vol: ${vol5m} | Radar Threshold: ${targetThreshold} (5m Avg: ${avg5mVol})`);
 
                 // Check if the individual 5-minute block qualifies as an active volume radar hit
-                if (avgDailyVol > 0 && vol5m > targetThreshold) {
-                    const multiplierHit = parseFloat((vol5m / avgDailyVol).toFixed(2));
+                if (avg5mVol > 0 && vol5m > targetThreshold) {
+                    const multiplierHit = parseFloat((vol5m / avg5mVol).toFixed(2));
                     console.log(`[ALERT] 🔥 ${cleanSym} Volume Spike detected at ${candleTimestamp}! 5m Vol: ${vol5m} > Threshold: ${targetThreshold}`);
                     
-                    this.upsertRadar(freshResults, cleanSym, closePrice, avgDailyVol, vol5m, multiplierHit);
+                    this.upsertRadar(freshResults, cleanSym, closePrice, avg5mVol, vol5m, multiplierHit);
 
                     // ─── AUTOMATED TRADING EXECUTION MATRIX START HERE ───
                     // Calculate if the 5-minute candle net change is positive or negative
