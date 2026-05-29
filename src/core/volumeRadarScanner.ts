@@ -251,7 +251,6 @@ export class VolumeRadarScanner {
 
     // ── STEP 3: One full scan round across all stocks ─────────────────────────
     private static async runScanRound() {
-        // Auth
         let token: string;
         try {
             token = await MstockService.getMstockJwtToken();
@@ -261,31 +260,9 @@ export class VolumeRadarScanner {
         }
 
         const apiKey = process.env.MSTOCK_API_KEY;
-        if (!apiKey) {
-            console.error("[RADAR] MSTOCK_API_KEY not set.");
-            return;
-        }
+        if (!apiKey) return;
 
-        // Fetch container's public IP to satisfy MStock IP binding
-        let publicIp = '127.0.0.1';
-        try {
-            const ipRes = await axios.get('https://api.ipify.org?format=json');
-            if (ipRes.data && ipRes.data.ip) {
-                publicIp = ipRes.data.ip;
-            }
-        } catch (e: any) {
-            // Ignore silently
-        }
-
-        const window = this.getLastClosed5mWindow();
-        if (!window) {
-            console.log("[RADAR] No valid market window. Skipping scan.");
-            return;
-        }
-
-        const { fromdate, todate } = window;
-        console.log(`[RADAR] Scanning window: ${fromdate} → ${todate}`);
-
+        console.log(`[RADAR] Querying latest live 5-minute data frames using Type B API...`);
         const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
         const freshResults: VolumeRadarItem[] = [...this.radarResults];
 
@@ -293,86 +270,62 @@ export class VolumeRadarScanner {
             const cleanSym = sym.replace('.NS', '');
             const symboltoken = INTRADAY_TOKEN_MAP[cleanSym] || MstockService.getEqTokenOnlySync(cleanSym);
 
-            if (!symboltoken) {
-                console.warn(`[RADAR] No token for ${cleanSym}, skipping.`);
-                continue;
-            }
+            if (!symboltoken) continue;
 
             try {
+                // ─── CHANGES START HERE: ISOLATED TYPE B LIVE 5-MINUTE CANDLE DETECTION ───
                 const response = await axios({
-                    method: 'POST',                          // POST avoids GET-body stripping
-                    url: 'https://api.mstock.trade/openapi/typeb/instruments/historical',
+                    method: 'POST', // Strictly Type B POST request
+                    url: 'https://api.mstock.trade/openapi/typeb/instruments/intraday',
                     headers: {
                         'X-Mirae-Version': '1',
                         'Authorization': `Bearer ${token}`,
                         'X-PrivateKey': apiKey,
-                        'Content-Type': 'application/json',
-                        'X-ClientLocalIP': '127.0.0.1',
-                        'X-ClientPublicIP': publicIp,
-                        'X-MACAddress': '00:00:00:00:00:00'
+                        'Content-Type': 'application/json'
                     },
                     data: {
-                        exchange: 'NSE',                     // string name, not numeric
-                        symboltoken,
-                        interval: 'FIVE_MINUTE',             // check MStock docs for exact value
-                        fromdate,
-                        todate
+                        exchange: "1",         // "1" = NSE segment string
+                        symboltoken: symboltoken,
+                        interval: "FIVE_MINUTE" // Upper snake_case required for the Type B POST parser
                     }
                 });
 
-                const ok = response.data?.status === true || response.data?.status === "true";
-                if (!ok) {
-                    console.error(`[RADAR] MStock rejected ${cleanSym}:`, JSON.stringify(response.data));
-                    continue;
-                }
-
-                const candles = response.data?.data?.candles;
+                const candles: any[][] = response.data?.data?.candles;
+                
                 if (!Array.isArray(candles) || candles.length === 0) {
-                    console.log(`[RADAR] No candles for ${cleanSym} in this window.`);
+                    console.log(`[RADAR] No live data available for ${cleanSym} from broker api yet.`);
                     continue;
                 }
 
-                // Candle format: [timestamp, open, high, low, close, volume]
-                const latest  = candles[candles.length - 1];
-                const open    = Number(latest[1]) || 0;
-                const ltp     = Number(latest[4]) || 0;
-                const vol5m   = Number(latest[5]) || 0;
-                const avgVol  = this.avgVolumes[cleanSym] || 0;
-                const threshold = avgVol * this.multiplier;
-                const isPositive = ltp >= open;
+                // Type B data maps the latest current candle index at position 0
+                const latestCandle = candles[0]; 
+                const candleTimestamp = latestCandle[0]; // e.g., "2026-05-29 09:30"
+                const ltp = Number(latestCandle[4]) || 0;
+                
+                // Extracting ONLY the volume of this explicit, latest 5-minute block
+                const vol5m = Number(latestCandle[5]) || 0;
+                // ─── CHANGES END HERE ───
 
-                console.log(`[RADAR] ${cleanSym} | vol: ${vol5m} | threshold: ${threshold} (avg: ${avgVol} × ${this.multiplier}) | direction: ${isPositive ? 'BUY' : 'SELL'}`);
+                const avgDailyVol = this.avgVolumes[cleanSym] || 0;
+                const targetThreshold = avgDailyVol * this.multiplier;
 
-                if (avgVol > 0 && vol5m > threshold) {
-                    const multiplierHit = parseFloat((vol5m / avgVol).toFixed(2));
-                    console.log(`[ALERT] 🔥 ${cleanSym} volume spike! ${vol5m} > ${threshold} (${multiplierHit}x avg)`);
+                console.log(`[RADAR] ${cleanSym} (${candleTimestamp}) | Latest 5m Vol: ${vol5m} | Radar Threshold: ${targetThreshold} (90-Day Avg: ${avgDailyVol})`);
+
+                if (avgDailyVol > 0 && vol5m > targetThreshold) {
+                    const multiplierHit = parseFloat((vol5m / avgDailyVol).toFixed(2));
+                    console.log(`[ALERT] 🔥 ${cleanSym} Volume Spike detected at ${candleTimestamp}! 5m Vol: ${vol5m} > Threshold: ${targetThreshold}`);
                     
-                    // Check if it's already in the radar 
-                    const existingIdx = freshResults.findIndex(r => r.symbol === cleanSym);
-
-                    if (existingIdx === -1) {
-                        try {
-                            // First time it enters the radar: Fire Auto-Trade
-                            const direction = isPositive ? 'BUY' : 'SELL';
-                            console.log(`[AUTO-TRADE] Firing ${direction} for ${cleanSym} at ₹${ltp}`);
-                            await MstockService.placeRadarAutoOrder(cleanSym, direction, ltp);
-                        } catch (err: any) {
-                            console.error(`[AUTO-TRADE ERROR] ${cleanSym}:`, err.message);
-                        }
-                    }
-
-                    this.upsertRadar(freshResults, cleanSym, ltp, avgVol, vol5m, multiplierHit);
+                    this.upsertRadar(freshResults, cleanSym, ltp, avgDailyVol, vol5m, multiplierHit);
                 }
 
             } catch (err: any) {
-                console.error(`[RADAR-CATCH] ${cleanSym}:`, err.response?.data || err.message);
+                console.error(`[RADAR-ERROR] ${cleanSym}:`, err.response?.data || err.message);
             }
 
-            await delay(150); // throttle between stocks
+            await delay(150); 
         }
 
         this.radarResults = freshResults;
-        console.log(`[RADAR] Scan complete. Alerts: ${this.radarResults.length}`);
     }
 
     // ── Upsert helper ─────────────────────────────────────────────────────────
