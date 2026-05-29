@@ -422,15 +422,22 @@ export class VolumeRadarScanner {
 
     private static buildMStockPayload(order: any) {
         return {
-            exch:        order.exchange ?? "NSE",
-            symbol:      order.tradingsymbol,
-            buysell:     order.transaction_type === "BUY" ? "B" : "S",
-            ordertype:   order.order_type === "MARKET" ? "MKT" : "L",
-            qty:         String(order.quantity),
-            price:       order.order_type === "MARKET" ? "0" : String(Number(order.price).toFixed(2)),
-            producttype: "D",
-            duration:    order.validity ?? "DAY",
-            clientcode:  process.env.MSTOCK_CLIENT_CODE || "MA2468211",
+            variety:           "NORMAL",
+            tradingsymbol:     order.tradingsymbol,
+            symboltoken:       order.symboltoken,
+            exchange:          "NSE",
+            transactiontype:   order.transaction_type,
+            ordertype:         "LIMIT",
+            quantity:          String(order.quantity),
+            producttype:       "DELIVERY",
+            price:             String(Number(order.price).toFixed(2)),
+            triggerprice:      "0",
+            squareoff:         "0",
+            stoploss:          "0",
+            trailingStopLoss:  "",
+            disclosedquantity: "",
+            duration:          "DAY",
+            ordertag:          ""
         };
     }
 
@@ -449,20 +456,17 @@ export class VolumeRadarScanner {
         const targetUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
 
         const orderPayload = this.buildMStockPayload({
-            exchange:         "NSE",
             tradingsymbol:    orderParams.symbol,
+            symboltoken:      orderParams.symboltoken,
             transaction_type: orderParams.transactionType,
-            order_type:       "MARKET",
             quantity:         orderParams.quantity,
             price:            orderParams.price,
-            product:          "CNC",  // ← Delivery
-            validity:         "DAY"
         });
 
         try {
             console.log(`[ORDER ENGINE] Sending Type B POST to: ${targetUrl}`);
             console.log('[ORDER PAYLOAD]', JSON.stringify(orderPayload, null, 2));
-            
+
             const orderResponse = await axios({
                 method: 'POST',
                 url: targetUrl,
@@ -472,18 +476,18 @@ export class VolumeRadarScanner {
                     'X-PrivateKey': orderParams.apiKey,
                     'Content-Type': 'application/json'
                 },
-                data: { data: orderPayload }
+                data: orderPayload
             });
 
             const isSuccess = orderResponse.data?.status === true
                            || orderResponse.data?.status === "true"
                            || orderResponse.data?.message === "SUCCESS";
-            
+
             if (isSuccess) {
                 console.log(`[ORDER FULFILLED]`, JSON.stringify(orderResponse.data?.data));
                 return;
             }
-            
+
             console.error(`[ORDER REJECTED]`, JSON.stringify(orderResponse.data));
 
         } catch (error: any) {
