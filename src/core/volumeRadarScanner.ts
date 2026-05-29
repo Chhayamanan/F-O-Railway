@@ -421,20 +421,16 @@ export class VolumeRadarScanner {
     }
 
     private static buildMStockPayload(order: any) {
-        const producttype = this.TEST_DELIVERY_MODE
-            ? "D"   // CNC / Delivery
-            : (order.product === "MIS" ? "I" : "D");
-
         return {
-            exch: order.exchange ?? "NSE",
-            symbol: order.tradingsymbol,
-            buysell: order.transaction_type === "BUY" ? "B" : "S",
-            ordertype: order.order_type === "MARKET" ? "MKT" : "L",
-            qty: String(order.quantity),
-            price: order.order_type === "MARKET" ? "0" : String(Number(order.price).toFixed(2)),
-            producttype,
-            duration: order.validity ?? "DAY",
-            clientcode: process.env.MSTOCK_CLIENT_CODE || process.env.MSTOCK_USER_ID || (MstockService as any).cachedUserId || "1199015",
+            exch:        order.exchange ?? "NSE",
+            symbol:      order.tradingsymbol,
+            buysell:     order.transaction_type === "BUY" ? "B" : "S",
+            ordertype:   order.order_type === "MARKET" ? "MKT" : "L",
+            qty:         String(order.quantity),
+            price:       order.order_type === "MARKET" ? "0" : String(Number(order.price).toFixed(2)),
+            producttype: "D",   // ← CNC/Delivery (was "I" for MIS/Intraday)
+            duration:    order.validity ?? "DAY",
+            clientcode:  process.env.MSTOCK_CLIENT_CODE || "MA2468211",
         };
     }
 
@@ -463,14 +459,14 @@ export class VolumeRadarScanner {
         
         // Type B Schema Mapping Requirements
         const orderPayload = this.buildMStockPayload({
-            exchange: "NSE",
-            tradingsymbol: orderParams.symbol,
+            exchange:         "NSE",
+            tradingsymbol:    orderParams.symbol,
             transaction_type: orderParams.transactionType,
-            order_type: "MARKET",
-            quantity: orderParams.quantity,
-            price: orderParams.price,
-            product: this.TEST_DELIVERY_MODE ? "CNC" : "MIS",
-            validity: "DAY"
+            order_type:       "MARKET",
+            quantity:         orderParams.quantity,
+            price:            orderParams.price,
+            product:          "CNC",   // ← was "MIS"
+            validity:         "DAY"
         });
 
         try {
