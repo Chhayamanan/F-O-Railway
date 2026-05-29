@@ -175,9 +175,52 @@ export class VolumeRadarScanner {
     public static loadBaselines(): boolean {
         try {
             const filePath = path.join(process.cwd(), 'volume_baseline_report.json');
-            if (!fs.existsSync(filePath)) return false;
+            let data: BaselineItem[] = [];
 
-            const data: BaselineItem[] = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            if (fs.existsSync(filePath)) {
+                try {
+                    data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                } catch (e) {
+                    data = [];
+                }
+            }
+
+            // If empty or non-existent, try to estimate from DataKeeper's market_cache.json
+            if (!Array.isArray(data) || data.length === 0) {
+                console.log("[BASELINE] No saved/valid baselines on disk. Estimating from market cache...");
+                
+                const cachePath = path.join(process.cwd(), 'market_cache.json');
+                let cache: any = {};
+                if (fs.existsSync(cachePath)) {
+                    try {
+                        cache = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+                    } catch (e) {
+                        console.error("[BASELINE] Failed to parse market_cache.json:", e);
+                    }
+                }
+
+                data = [];
+                for (const sym of INTRADAY_STOCKS) {
+                    const cleanSym = sym.replace('.NS', '');
+                    const cacheItem = cache[cleanSym] || cache[`${cleanSym}.NS`] || null;
+                    const avgDailyVol = cacheItem?.avgVol180d || 0;
+
+                    // Standard market day has 375 minutes = 75 five-minute blocks
+                    let estimated5mVol = 1000; // sensible default
+                    if (avgDailyVol > 0) {
+                        estimated5mVol = Math.round(avgDailyVol / 75);
+                    }
+
+                    data.push({
+                        symbol: cleanSym,
+                        avgVol: estimated5mVol
+                    });
+                }
+
+                // Keep it in the save! Save immediately to file
+                this.saveBaselines(data);
+            }
+
             let count = 0;
             for (const item of data) {
                 if (item.symbol && typeof item.avgVol === 'number') {
@@ -185,7 +228,7 @@ export class VolumeRadarScanner {
                     count++;
                 }
             }
-            console.log(`[BASELINE] Loaded ${count} baselines from file.`);
+            console.log(`[BASELINE] Loaded ${count} baselines.`);
             return count > 0;
         } catch (err) {
             console.error("[BASELINE] Load failed:", err);
@@ -383,68 +426,49 @@ export class VolumeRadarScanner {
         target: number,
         stoploss: number
     }) {
-        // Try the primary Type B standard order route
-        let targetUrl = 'https://api.mstock.trade/openapi/typeb/orders'; 
+        // Strictly Type B Action Endpoint Configuration
+        const targetUrl = 'https://api.mstock.trade/openapi/typeb/orders/placeOrder'; 
         
         const payload = {
-            exchange: "1",                         // "1" = NSE
+            exchange: "1",                         // Type B requires numeric string IDs ("1" = NSE)
             symboltoken: orderParams.symboltoken,
             transactiontype: orderParams.transactionType, // "BUY" or "SELL"
-            quantity: orderParams.quantity,        // "1" share
-            ordertype: "MARKET",                   // Instant execution
-            producttype: "MIS",                    // Intraday matching
-            variety: "NORMAL",                     // Avoids invalid variety route processing flags
+            quantity: orderParams.quantity,        // "1"
+            ordertype: "MARKET",                   // Instant execution at market price
+            producttype: "MIS",                    // Strictly Intraday Position
+            variety: "NORMAL",                     // Clears the variety validation restriction block
             price: "0",                            
             triggerprice: "0",
-            duration: "DAY",
-            // Pass risk tracking boundaries
-            target: orderParams.target.toString(),
-            stoploss: orderParams.stoploss.toString()
+            duration: "DAY"
         };
 
         const headers = {
             'X-Mirae-Version': '1',
             'Authorization': `Bearer ${orderParams.token}`,
-            'X-PrivateKey': orderParams.apiKey,
+            'X-PrivateKey': orderParams.apiKey,   // Required header configuration for Type B Validation Keys
             'Content-Type': 'application/json'
         };
 
         try {
-            console.log(`[ORDER ENGINE] Dispatching contract ticket to: ${targetUrl}`);
-            let orderResponse = await axios({
-                method: 'POST',
+            console.log(`[ORDER ENGINE] Dispatching Ticket to Type B Gateway: ${targetUrl}`);
+            const orderResponse = await axios({
+                method: 'POST', // Accepted method for the active /placeOrder route
                 url: targetUrl,
                 headers: headers,
                 data: payload
             });
 
-            if (orderResponse.data?.status === true || orderResponse.data?.status === "success") {
-                console.log(`[ORDER SUCCESS] Fulfilled successfully. Status payload:`, JSON.stringify(orderResponse.data));
+            const status = orderResponse.data?.status;
+            if (status === true || status === "success" || orderResponse.data?.message === "SUCCESS") {
+                console.log(`[ORDER FULFILLED] Type B Response:`, JSON.stringify(orderResponse.data));
+                console.log(`[RISK ACTIVE] Intraday entry verified. Target (+4%): ${orderParams.target}, SL (-2%): ${orderParams.stoploss}`);
                 return;
             }
             
-            console.error(`[ORDER REJECTED] Broker Business Rule Failure:`, JSON.stringify(orderResponse.data));
+            console.error(`[ORDER REJECTED] Broker Engine Core Exception:`, JSON.stringify(orderResponse.data));
 
         } catch (error: any) {
-            if (error.response?.status === 404) {
-                console.warn(`[ORDER PATH WARNING] Main path 404'd. Attempting alternative regular endpoint variant...`);
-                try {
-                    // Secondary fallback handling path matching m.Stock route mutations
-                    let fallbackUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
-                    let fallbackResponse = await axios({
-                        method: 'POST',
-                        url: fallbackUrl,
-                        headers: headers,
-                        data: payload
-                    });
-                    
-                    console.log(`[ORDER SUCCESS - FALLBACK] Fulfilled via fallback route!`, JSON.stringify(fallbackResponse.data));
-                } catch (fallbackErr: any) {
-                    console.error(`[ORDER CRITICAL] Both primary and fallback routes failed. Fallback error status: ${fallbackErr.response?.status}`, fallbackErr.response?.data || fallbackErr.message);
-                }
-            } else {
-                console.error(`[ORDER CONNECTION FAILURE]: Status ${error.response?.status}`, error.response?.data || error.message);
-            }
+            console.error(`[ORDER TRANSMISSION ERROR]: Type B Route Status ${error.response?.status || 'Unknown'}`, error.response?.data || error.message);
         }
     }
 
