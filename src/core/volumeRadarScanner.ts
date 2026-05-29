@@ -33,6 +33,9 @@ export class VolumeRadarScanner {
     public static timeoutId: any = null;
     public static multiplier   = 10;
 
+    // Add a clean state memory cache to your class file
+    private static tokenToRealSymbolMap: Record<string, string> = {};
+
     // symbol → average 5m volume (populated once per day)
     public static avgVolumes: Record<string, number> = {};
 
@@ -123,7 +126,21 @@ export class VolumeRadarScanner {
                 });
 
                 const ok = response.data?.status === true || response.data?.status === "true";
-                if (!ok) {
+                if (ok) {
+                    // EXTRACT TRUE SYMBOL: MStock echoes the official contract series string
+                    // back in the response payload (usually via 'script' or 'tradingsymbol' fields)
+                    const officialExchangeName = response.data?.data?.script || response.data?.data?.tradingsymbol;
+                    
+                    if (officialExchangeName) {
+                        // Strip the suffix clean to match your internal lookups smoothly
+                        const cleanScripString = officialExchangeName.replace("-EQ", "").trim();
+                        
+                        // Save the correct link inside your runtime storage table
+                        this.tokenToRealSymbolMap[symboltoken] = cleanScripString;
+                        
+                        console.log(`[DYNAMIC SYNC] Token ${symboltoken} mapped to official ticker: ${cleanScripString}`);
+                    }
+                } else {
                     console.warn(`[BASELINE] MStock rejected ${cleanSym}:`, JSON.stringify(response.data));
                     continue;
                 }
@@ -406,33 +423,29 @@ export class VolumeRadarScanner {
         quantity: string,
         price: number
     }) {
-        const cleanSymbol = order.symbol.trim();
-
-        // DYNAMIC SYMBOL ROUTER:
-        // If the tracking token array already carries the exact match string, use it.
-        // Otherwise, append standard equity flags natively.
-        let targetTradingSymbol = cleanSymbol;
-        if (!cleanSymbol.endsWith("-EQ") && !cleanSymbol.endsWith("-SM")) {
-            // Fallback default for standard board listings
-            targetTradingSymbol = `${cleanSymbol}-EQ`; 
-        }
+        // Look up the validated string name linked to this token ID
+        // If the morning sync hasn't run yet, fall back safely to the dictionary key
+        const validatedTicker = this.tokenToRealSymbolMap[order.symboltoken] || order.symbol;
+        
+        // Core structural suffix check
+        const finalTradingSymbol = validatedTicker.endsWith("-EQ") ? validatedTicker : `${validatedTicker}-EQ`;
 
         return {
-            variety:           "NORMAL",             // Matches Glossary mapping
-            tradingsymbol:     targetTradingSymbol,  // Evaluated dynamically via master array
+            variety:           "NORMAL",
+            tradingsymbol:     finalTradingSymbol, // Verified string match mapping
             symboltoken:       String(order.symboltoken),
-            exchange:          "NSE",                // Default target floor
-            transactiontype:   "BUY",                // Standard Delivery long acquisition
-            ordertype:         "MARKET",             // Dictates the execution fill rule
+            exchange:          "NSE",
+            transactiontype:   "BUY",
+            ordertype:         "MARKET", 
             quantity:          String(order.quantity),
-            producttype:       "DELIVERY",           // Matches Glossary mapping
-            price:             "0",                  // FIX: Forced '0' for MARKET orders to pass API validation
+            producttype:       "DELIVERY",
+            price:             "0",                // Strict market entry validation rule
             triggerprice:      "0",
             squareoff:         "0",
             stoploss:          "0",
             trailingStopLoss:  "",
             disclosedquantity: "",
-            duration:          "DAY",                // Matches Glossary mapping
+            duration:          "DAY",
             ordertag:          ""
         };
     }
