@@ -377,6 +377,7 @@ export class VolumeRadarScanner {
                             token,
                             apiKey,
                             symboltoken,
+                            symbol: cleanSym,
                             transactionType: "BUY",
                             quantity: "1",
                             price: closePrice,
@@ -395,6 +396,7 @@ export class VolumeRadarScanner {
                             token,
                             apiKey,
                             symboltoken,
+                            symbol: cleanSym,
                             transactionType: "SELL",
                             quantity: "1",
                             price: closePrice,
@@ -420,6 +422,7 @@ export class VolumeRadarScanner {
         token: string,
         apiKey: string,
         symboltoken: string,
+        symbol: string,
         transactionType: "BUY" | "SELL",
         quantity: string,
         price: number,
@@ -431,27 +434,21 @@ export class VolumeRadarScanner {
         
         // Type B Schema Mapping Requirements
         const orderPayload = {
-            variety: "NORMAL",
-            tradingsymbol: `${orderParams.symboltoken}-EQ`, // m.Stock tracking string structure
-            symboltoken: orderParams.symboltoken,
-            exchange: "NSE",                       // Type B order routing requires "NSE" text string
-            transactiontype: orderParams.transactionType, // "BUY" or "SELL"
-            ordertype: "MARKET",                   
-            quantity: orderParams.quantity,        // "1"
-            producttype: "INTRADAY",               // Type B uses "INTRADAY", not "MIS"
-            price: "0",                            
-            triggerprice: "0",
-            duration: "DAY",
-            // Pass your calculated risk management metrics
-            booktarget: orderParams.target.toString(),
-            bookstoploss: orderParams.stoploss.toString()
+            exchange: "NSE",
+            tradingsymbol: orderParams.symbol, 
+            transaction_type: orderParams.transactionType,
+            order_type: "MARKET",                   
+            quantity: orderParams.quantity,
+            price: orderParams.price,                            
+            product: "MIS",               
+            validity: "DAY"
         };
 
         try {
-            console.log(`[ORDER ENGINE] Sending Type B GET request to: ${targetUrl}`);
+            console.log(`[ORDER ENGINE] Sending Type B POST request to: ${targetUrl}`);
             
             const orderResponse = await axios({
-                method: 'GET', // Type B uses GET with parameters passed in the request body
+                method: 'POST',
                 url: targetUrl,
                 headers: {
                     'X-Mirae-Version': '1',
