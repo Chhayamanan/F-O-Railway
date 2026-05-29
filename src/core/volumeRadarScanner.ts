@@ -383,43 +383,68 @@ export class VolumeRadarScanner {
         target: number,
         stoploss: number
     }) {
+        // Try the primary Type B standard order route
+        let targetUrl = 'https://api.mstock.trade/openapi/typeb/orders'; 
+        
+        const payload = {
+            exchange: "1",                         // "1" = NSE
+            symboltoken: orderParams.symboltoken,
+            transactiontype: orderParams.transactionType, // "BUY" or "SELL"
+            quantity: orderParams.quantity,        // "1" share
+            ordertype: "MARKET",                   // Instant execution
+            producttype: "MIS",                    // Intraday matching
+            variety: "NORMAL",                     // Avoids invalid variety route processing flags
+            price: "0",                            
+            triggerprice: "0",
+            duration: "DAY",
+            // Pass risk tracking boundaries
+            target: orderParams.target.toString(),
+            stoploss: orderParams.stoploss.toString()
+        };
+
+        const headers = {
+            'X-Mirae-Version': '1',
+            'Authorization': `Bearer ${orderParams.token}`,
+            'X-PrivateKey': orderParams.apiKey,
+            'Content-Type': 'application/json'
+        };
+
         try {
-            // m.Stock requires sending orders via POST to the core order placing routing engine
-            // We set 'variety' to 'NORMAL' and 'producttype' to 'MIS' for intraday positions
-            const orderResponse = await axios({
+            console.log(`[ORDER ENGINE] Dispatching contract ticket to: ${targetUrl}`);
+            let orderResponse = await axios({
                 method: 'POST',
-                url: 'https://api.mstock.trade/openapi/typeb/orders/place', // Verify specific orders/place path layout on your broker gateway docs
-                headers: {
-                    'X-Mirae-Version': '1',
-                    'Authorization': `Bearer ${orderParams.token}`,
-                    'X-PrivateKey': orderParams.apiKey,
-                    'Content-Type': 'application/json'
-                },
-                data: {
-                    exchange: "1",                         // "1" = NSE Segment
-                    symboltoken: orderParams.symboltoken,
-                    transactiontype: orderParams.transactionType, // "BUY" or "SELL"
-                    quantity: orderParams.quantity,        // "1" share
-                    ordertype: "MARKET",                   // Instant liquidity fulfillment
-                    producttype: "MIS",                    // Intraday product type configuration
-                    variety: "NORMAL",                     // Avoids invalid variety route processing flags
-                    price: "0",                            // Market orders use price "0"
-                    triggerprice: "0",
-                    
-                    // Risk Management Metrics mapping tags used by backend processors
-                    booktarget: orderParams.target.toString(),
-                    bookstoploss: orderParams.stoploss.toString()
-                }
+                url: targetUrl,
+                headers: headers,
+                data: payload
             });
 
-            if (orderResponse.data?.status === true || orderResponse.data?.status === "success" || orderResponse.data?.status === "true") {
-                console.log(`[ORDER SUCCESS] Order ID: ${orderResponse.data?.data?.orderid || 'Executed'} | ${orderParams.transactionType} fulfilled successfully.`);
-            } else {
-                console.error(`[ORDER REJECTED] Broker Reason:`, JSON.stringify(orderResponse.data));
+            if (orderResponse.data?.status === true || orderResponse.data?.status === "success") {
+                console.log(`[ORDER SUCCESS] Fulfilled successfully. Status payload:`, JSON.stringify(orderResponse.data));
+                return;
             }
+            
+            console.error(`[ORDER REJECTED] Broker Business Rule Failure:`, JSON.stringify(orderResponse.data));
 
         } catch (error: any) {
-            console.error(`[ORDER ROUTING CRITICAL ERROR]:`, error.response?.data || error.message);
+            if (error.response?.status === 404) {
+                console.warn(`[ORDER PATH WARNING] Main path 404'd. Attempting alternative regular endpoint variant...`);
+                try {
+                    // Secondary fallback handling path matching m.Stock route mutations
+                    let fallbackUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
+                    let fallbackResponse = await axios({
+                        method: 'POST',
+                        url: fallbackUrl,
+                        headers: headers,
+                        data: payload
+                    });
+                    
+                    console.log(`[ORDER SUCCESS - FALLBACK] Fulfilled via fallback route!`, JSON.stringify(fallbackResponse.data));
+                } catch (fallbackErr: any) {
+                    console.error(`[ORDER CRITICAL] Both primary and fallback routes failed. Fallback error status: ${fallbackErr.response?.status}`, fallbackErr.response?.data || fallbackErr.message);
+                }
+            } else {
+                console.error(`[ORDER CONNECTION FAILURE]: Status ${error.response?.status}`, error.response?.data || error.message);
+            }
         }
     }
 
