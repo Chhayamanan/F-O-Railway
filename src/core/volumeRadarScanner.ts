@@ -273,9 +273,8 @@ export class VolumeRadarScanner {
             if (!symboltoken) continue;
 
             try {
-                // ─── CHANGES START HERE: ISOLATED TYPE B LIVE 5-MINUTE CANDLE DETECTION ───
                 const response = await axios({
-                    method: 'POST', // Strictly Type B POST request
+                    method: 'POST',
                     url: 'https://api.mstock.trade/openapi/typeb/instruments/intraday',
                     headers: {
                         'X-Mirae-Version': '1',
@@ -284,9 +283,9 @@ export class VolumeRadarScanner {
                         'Content-Type': 'application/json'
                     },
                     data: {
-                        exchange: "1",         // "1" = NSE segment string
+                        exchange: "1",         
                         symboltoken: symboltoken,
-                        interval: "FIVE_MINUTE" // Upper snake_case required for the Type B POST parser
+                        interval: "FIVE_MINUTE" 
                     }
                 });
 
@@ -299,23 +298,68 @@ export class VolumeRadarScanner {
 
                 // Type B data maps the latest current candle index at position 0
                 const latestCandle = candles[0]; 
-                const candleTimestamp = latestCandle[0]; // e.g., "2026-05-29 09:30"
-                const ltp = Number(latestCandle[4]) || 0;
+                const candleTimestamp = latestCandle[0]; 
                 
-                // Extracting ONLY the volume of this explicit, latest 5-minute block
-                const vol5m = Number(latestCandle[5]) || 0;
-                // ─── CHANGES END HERE ───
+                // Extract core parameters from the 5-minute candle framework
+                const openPrice  = Number(latestCandle[1]) || 0;
+                const highPrice  = Number(latestCandle[2]) || 0;
+                const lowPrice   = Number(latestCandle[3]) || 0;
+                const closePrice = Number(latestCandle[4]) || 0; // Current Last Traded Price (LTP)
+                const vol5m      = Number(latestCandle[5]) || 0;
 
                 const avgDailyVol = this.avgVolumes[cleanSym] || 0;
                 const targetThreshold = avgDailyVol * this.multiplier;
 
                 console.log(`[RADAR] ${cleanSym} (${candleTimestamp}) | Latest 5m Vol: ${vol5m} | Radar Threshold: ${targetThreshold} (90-Day Avg: ${avgDailyVol})`);
 
+                // Check if the individual 5-minute block qualifies as an active volume radar hit
                 if (avgDailyVol > 0 && vol5m > targetThreshold) {
                     const multiplierHit = parseFloat((vol5m / avgDailyVol).toFixed(2));
                     console.log(`[ALERT] 🔥 ${cleanSym} Volume Spike detected at ${candleTimestamp}! 5m Vol: ${vol5m} > Threshold: ${targetThreshold}`);
                     
-                    this.upsertRadar(freshResults, cleanSym, ltp, avgDailyVol, vol5m, multiplierHit);
+                    this.upsertRadar(freshResults, cleanSym, closePrice, avgDailyVol, vol5m, multiplierHit);
+
+                    // ─── AUTOMATED TRADING EXECUTION MATRIX START HERE ───
+                    // Calculate if the 5-minute candle net change is positive or negative
+                    const priceChange = closePrice - openPrice;
+
+                    if (priceChange > 0) {
+                        // 1. BUY SIGNAL: Positive candle structure with high volume backing
+                        const targetPrice = parseFloat((closePrice * 1.04).toFixed(2)); // +4% Target
+                        const stopLossPrice = parseFloat((closePrice * 0.98).toFixed(2)); // -2% Stop Loss
+
+                        console.log(`[TRADE ENGINE] 🟢 BUY Triggered for ${cleanSym} at ${closePrice}. Target: ${targetPrice}, SL: ${stopLossPrice}`);
+                        
+                        await this.executeIntradayOrder({
+                            token,
+                            apiKey,
+                            symboltoken,
+                            transactionType: "BUY",
+                            quantity: "1",
+                            price: closePrice,
+                            target: targetPrice,
+                            stoploss: stopLossPrice
+                        });
+
+                    } else if (priceChange < 0) {
+                        // 2. SELL SIGNAL: Negative candle structure (Short Sale) with high volume backing
+                        const targetPrice = parseFloat((closePrice * 0.96).toFixed(2)); // -4% Target for Shorts
+                        const stopLossPrice = parseFloat((closePrice * 1.02).toFixed(2)); // +2% Stop Loss for Shorts
+
+                        console.log(`[TRADE ENGINE] 🔴 SHORT SELL Triggered for ${cleanSym} at ${closePrice}. Target: ${targetPrice}, SL: ${stopLossPrice}`);
+
+                        await this.executeIntradayOrder({
+                            token,
+                            apiKey,
+                            symboltoken,
+                            transactionType: "SELL",
+                            quantity: "1",
+                            price: closePrice,
+                            target: targetPrice,
+                            stoploss: stopLossPrice
+                        });
+                    }
+                    // ─── AUTOMATED TRADING EXECUTION MATRIX END HERE ───
                 }
 
             } catch (err: any) {
@@ -326,6 +370,57 @@ export class VolumeRadarScanner {
         }
 
         this.radarResults = freshResults;
+    }
+
+    // ─── Order Execution Method Wrapper ───────────────────────────────────────────
+    private static async executeIntradayOrder(orderParams: {
+        token: string,
+        apiKey: string,
+        symboltoken: string,
+        transactionType: "BUY" | "SELL",
+        quantity: string,
+        price: number,
+        target: number,
+        stoploss: number
+    }) {
+        try {
+            // m.Stock requires sending orders via POST to the core order placing routing engine
+            // We set 'variety' to 'NORMAL' and 'producttype' to 'MIS' for intraday positions
+            const orderResponse = await axios({
+                method: 'POST',
+                url: 'https://api.mstock.trade/openapi/typeb/orders/place', // Verify specific orders/place path layout on your broker gateway docs
+                headers: {
+                    'X-Mirae-Version': '1',
+                    'Authorization': `Bearer ${orderParams.token}`,
+                    'X-PrivateKey': orderParams.apiKey,
+                    'Content-Type': 'application/json'
+                },
+                data: {
+                    exchange: "1",                         // "1" = NSE Segment
+                    symboltoken: orderParams.symboltoken,
+                    transactiontype: orderParams.transactionType, // "BUY" or "SELL"
+                    quantity: orderParams.quantity,        // "1" share
+                    ordertype: "MARKET",                   // Instant liquidity fulfillment
+                    producttype: "MIS",                    // Intraday product type configuration
+                    variety: "NORMAL",                     // Avoids invalid variety route processing flags
+                    price: "0",                            // Market orders use price "0"
+                    triggerprice: "0",
+                    
+                    // Risk Management Metrics mapping tags used by backend processors
+                    booktarget: orderParams.target.toString(),
+                    bookstoploss: orderParams.stoploss.toString()
+                }
+            });
+
+            if (orderResponse.data?.status === true || orderResponse.data?.status === "success" || orderResponse.data?.status === "true") {
+                console.log(`[ORDER SUCCESS] Order ID: ${orderResponse.data?.data?.orderid || 'Executed'} | ${orderParams.transactionType} fulfilled successfully.`);
+            } else {
+                console.error(`[ORDER REJECTED] Broker Reason:`, JSON.stringify(orderResponse.data));
+            }
+
+        } catch (error: any) {
+            console.error(`[ORDER ROUTING CRITICAL ERROR]:`, error.response?.data || error.message);
+        }
     }
 
     // ── Upsert helper ─────────────────────────────────────────────────────────
