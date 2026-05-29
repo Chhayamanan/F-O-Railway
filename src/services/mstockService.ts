@@ -14,12 +14,7 @@ export class MstockService {
 
   static getEqTokenOnlySync(symbol: string): string | null {
      if (!this.scripMasterDataMap) return null;
-     const upper = symbol.toUpperCase();
-     let info = this.scripMasterDataMap.get(upper);
-     if (!info && upper === 'BLACKBUC') {
-         info = this.scripMasterDataMap.get('BLACKBUCK');
-     }
-     return info?.token || null;
+     return this.scripMasterDataMap.get(symbol.toUpperCase())?.token || null;
   }
   
   static getFutTokenOnlySync(symbol: string): string | null {
@@ -35,9 +30,7 @@ export class MstockService {
   }
 
   static getSymbolFromTokenSync(token: string): string | null {
-     const sym = this.tokenToSymbolMap.get(token) || null;
-     if (sym === 'BLACKBUCK') return 'BLACKBUC';
-     return sym;
+     return this.tokenToSymbolMap.get(token) || null;
   }
 
   static async autoLoginWithTOTP() {
@@ -351,12 +344,7 @@ export class MstockService {
 
   static async getSymbolToken(symbol: string, apiKey: string, sessionToken: string): Promise<{token: string; tradingSymbol: string} | null> {
     await this.initScripMaster(apiKey, sessionToken);
-    const upper = symbol.toUpperCase();
-    let info = this.scripMasterDataMap?.get(upper) || null;
-    if (!info && upper === 'BLACKBUC') {
-        info = this.scripMasterDataMap?.get('BLACKBUCK') || null;
-    }
-    return info;
+    return this.scripMasterDataMap?.get(symbol.toUpperCase()) || null;
   }
 
   static async getFutureSymbolToken(symbol: string, apiKey: string, sessionToken: string): Promise<{token: string; tradingSymbol: string; lotSize: number} | null> {
