@@ -423,28 +423,30 @@ export class VolumeRadarScanner {
         quantity: string,
         price: number
     }) {
-        // Look up the validated string name linked to this token ID
-        // If the morning sync hasn't run yet, fall back safely to the dictionary key
-        const validatedTicker = this.tokenToRealSymbolMap[order.symboltoken] || order.symbol;
-        
-        // Core structural suffix check
-        const finalTradingSymbol = validatedTicker.endsWith("-EQ") ? validatedTicker : `${validatedTicker}-EQ`;
+        const cleanSymbol = order.symbol.trim();
+
+        // DYNAMIC SCRIP FORMATTER
+        // Prevents breaking lookups on specialized symbols or mismapped configs
+        let targetTradingSymbol = cleanSymbol;
+        if (!cleanSymbol.endsWith("-EQ") && !cleanSymbol.endsWith("-SM")) {
+            targetTradingSymbol = `${cleanSymbol}-EQ`; 
+        }
 
         return {
             variety:           "NORMAL",
-            tradingsymbol:     finalTradingSymbol, // Verified string match mapping
+            tradingsymbol:     targetTradingSymbol,
             symboltoken:       String(order.symboltoken),
             exchange:          "NSE",
             transactiontype:   "BUY",
             ordertype:         "MARKET", 
             quantity:          String(order.quantity),
             producttype:       "DELIVERY",
-            price:             "0",                // Strict market entry validation rule
+            price:             "0",         // Mandated '0' for market placement validation
             triggerprice:      "0",
             squareoff:         "0",
             stoploss:          "0",
             trailingStopLoss:  "",
-            disclosedquantity: "",
+            disclosedquantity: "0",         // FIX: Must be "0" as a string, cannot be empty ""
             duration:          "DAY",
             ordertag:          ""
         };

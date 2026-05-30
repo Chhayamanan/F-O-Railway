@@ -668,10 +668,10 @@ export const INTRADAY_MARGINS_DATA: Record<string, { marginPct: number, fToken: 
   "SHOPER": { marginPct: 35, fToken: "11213" },
   "SHREECEM": { marginPct: 25, fToken: "3150" },
   "SHRIRAMP": { marginPct: 40, fToken: "3103" },
-  "SIEMENS": { marginPct: 25, fToken: "3150" },
-  "SUYOG": { marginPct: 25, fToken: "3150" },
-  "SYRMA": { marginPct: 25, fToken: "3150" },
-  "TVSMOTOR": { marginPct: 25, fToken: "3150" },
-  "ZYDUSWELL": { marginPct: 25, fToken: "3150" }
+  "SIEMENS": { marginPct: 25, fToken: "3150" },  // ← Token 3150 belongs strictly here
+  "SUYOG": { marginPct: 25, fToken: "19395" },   // ← Corrected verified token
+  "SYRMA": { marginPct: 25, fToken: "7774" },    // ← Corrected verified token
+  "TVSMOTOR": { marginPct: 25, fToken: "3709" }, // ← Corrected verified token
+  "ZYDUSWELL": { marginPct: 25, fToken: "4341" } // ← Corrected verified token
 };
 export const INTRADAY_STOCKS = Object.keys(INTRADAY_MARGINS_DATA);
