@@ -28,6 +28,21 @@ async function startServer() {
     res.download(filePath, 'Stock_Baseline_Report.xlsx');
   });
 
+  app.post("/api/buy", async (req, res) => {
+    try {
+      const { symbol, token } = req.body;
+      const { placeBuyOrder } = await import("./services/mStockService");
+      
+      console.log(`Received buy request for ${symbol}`);
+      const finalToken = token || "11050";
+      const result = await placeBuyOrder(symbol, finalToken);
+      res.json({ success: true, result });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // ======== VITE MIDDLEWARE ========
   if (process.env.NODE_ENV !== 'production') {
     try {

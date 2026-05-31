@@ -3,8 +3,9 @@ import React, { useState, useMemo } from 'react';
 function App() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  const [multiplier, setMultiplier] = useState(1.5);
+  const [multiplier, setMultiplier] = useState(2.0);
   const [results, setResults] = useState<any[]>([]);
+  const [buying, setBuying] = useState(false);
 
   const generateReport = async () => {
     setLoading(true);
@@ -36,6 +37,52 @@ function App() {
       stock.last5mVolume > (multiplier * stock.avg5mVol60d)
     );
   }, [results, multiplier]);
+
+  const handleBuy = async (stock: any) => {
+    try {
+      const res = await fetch('/api/buy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          symbol: stock.symbol,
+          token: stock.mstockToken
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Successfully placed order for ${stock.symbol}`);
+      } else {
+        alert(`Failed to place order for ${stock.symbol}: ${data.error}`);
+      }
+    } catch (e: any) {
+      alert(`Error placing order: ${e.message}`);
+    }
+  };
+
+  const handleBuyAllEligible = async () => {
+     if (!filteredResults.length) return;
+     setBuying(true);
+     let successCount = 0;
+     let failCount = 0;
+     for (const stock of filteredResults) {
+        try {
+          const res = await fetch('/api/buy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: stock.symbol, token: stock.mstockToken })
+          });
+          const data = await res.json();
+          if (data.success) successCount++;
+          else failCount++;
+        } catch (e) {
+          failCount++;
+        }
+     }
+     setBuying(false);
+     alert(`Finished buying. Success: ${successCount}. Failed: ${failCount}`);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-start justify-center p-8 font-sans text-slate-900 mt-10">
@@ -76,16 +123,21 @@ function App() {
                 <h2 className="text-xl font-semibold text-slate-900">Volume Analytics</h2>
                 <p className="text-sm text-slate-500">Showing stocks where Last 5 Min Volume &gt; (Multiplier × Avg 5 Min Volume for 60 Days)</p>
               </div>
-              <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg p-2">
-                <label className="text-sm font-medium text-slate-700 whitespace-nowrap pl-2">Volume Multiplier:</label>
-                <input 
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  value={multiplier}
-                  onChange={(e) => setMultiplier(parseFloat(e.target.value) || 0)}
-                  className="w-20 px-2 py-1 rounded bg-white border border-slate-300 text-sm text-center focus:outline-none focus:ring-2 focus:ring-slate-900" 
-                />
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2">
+                  <label className="text-sm font-medium text-slate-700 whitespace-nowrap pl-2">Volume Multiplier:</label>
+                  <input 
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={multiplier}
+                    onChange={(e) => setMultiplier(parseFloat(e.target.value) || 0)}
+                    className="w-20 px-2 py-1 rounded bg-white border border-slate-300 text-sm text-center focus:outline-none focus:ring-2 focus:ring-slate-900" 
+                  />
+                </div>
+                <button onClick={handleBuyAllEligible} disabled={buying || filteredResults.length === 0} className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-800 disabled:opacity-50">
+                  {buying ? 'Buying...' : 'Buy All Eligible'}
+                </button>
               </div>
             </div>
 
@@ -98,12 +150,13 @@ function App() {
                     <th className="py-3 px-4 font-medium text-right">Last 5m Vol</th>
                     <th className="py-3 px-4 font-medium text-right text-blue-600">Multiplier Met</th>
                     <th className="py-3 px-4 font-medium text-right">1m Vol (MStock)</th>
+                    <th className="py-3 px-4 font-medium text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredResults.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate-500">
+                      <td colSpan={6} className="py-8 text-center text-slate-500">
                         No stocks meet the current multiplier criteria.
                       </td>
                     </tr>
@@ -117,6 +170,11 @@ function App() {
                           <td className="py-3 px-4 text-right font-medium text-slate-900">{Math.round(stock.last5mVolume).toLocaleString()}</td>
                           <td className="py-3 px-4 text-right font-medium text-blue-600">{actualMultiplier.toFixed(2)}x</td>
                           <td className="py-3 px-4 text-right text-slate-600">{stock.last1mVolume.toLocaleString()}</td>
+                          <td className="py-3 px-4 text-center">
+                            <button onClick={() => handleBuy(stock)} className="px-3 py-1 bg-slate-900 text-white rounded text-xs hover:bg-slate-800">
+                              Buy 1 Qty
+                            </button>
+                          </td>
                         </tr>
                       )
                     })
