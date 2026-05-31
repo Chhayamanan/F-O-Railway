@@ -14,10 +14,13 @@ export interface StockStats {
     low90d: number;
     avgDailyVol90d: number;
     avg5mVol60d: number;
+    last5mVolume: number;
+    last1mVolume: number;
+    last1mChangePct: number;
 }
 
 export class DataFetcher {
-    public static async generateReport(): Promise<string> {
+    public static async generateReport(): Promise<{filePath: string; data: StockStats[]}> {
         const stocks = DataKeeper.getAllStocks();
         const results: StockStats[] = [];
 
@@ -40,17 +43,50 @@ export class DataFetcher {
                     });
                 } catch (e) {
                     console.warn(`[DataFetcher] Failed to fetch 60-day 5m data for ${stock.symbol}, trying 30 days.`);
-                    // Fallback to 30 days if 60 days fails due to date constraints
                     min5Data = await yahooFinance.chart(querySymbol, {
                          period1: this.getDaysAgoTimestamp(30), 
                          interval: '5m'
                     });
                 }
 
+                // Fetch 1 min data using 5 day buffer to account for weekends 
+                let min1Data;
+                try {
+                    min1Data = await yahooFinance.chart(querySymbol, {
+                        period1: this.getDaysAgoTimestamp(5),
+                        interval: '1m'
+                    });
+                } catch(e) {
+                    console.warn(`[DataFetcher] Failed to fetch 1m data for ${stock.symbol}`);
+                }
+
                 if (!dailyData || !dailyData.quotes || dailyData.quotes.length === 0 ||
                     !min5Data || !min5Data.quotes || min5Data.quotes.length === 0) {
-                    console.log(`[DataFetcher] Skipping ${stock.symbol} due to insufficient data.`);
+                    console.log(`[DataFetcher] Skipping ${stock.symbol} due to insufficient 90d or 5m data.`);
                     continue;
+                }
+
+                // 1 min info
+                let last1mVolume = 0;
+                let last1mChangePct = 0;
+                if (min1Data && min1Data.quotes && min1Data.quotes.length > 0) {
+                    // find the last valid minute quote where volume > 0
+                    let lastValidQuote = null;
+                    for (let i = min1Data.quotes.length - 1; i >= 0; i--) {
+                        if (min1Data.quotes[i].volume && min1Data.quotes[i].volume > 0) {
+                            lastValidQuote = min1Data.quotes[i];
+                            break;
+                        }
+                    }
+                    
+                    if (lastValidQuote) {
+                        last1mVolume = lastValidQuote.volume || 0;
+                        const open = lastValidQuote.open || 0;
+                        const close = lastValidQuote.close || open;
+                        if (open > 0) {
+                            last1mChangePct = ((close - open) / open) * 100;
+                        }
+                    }
                 }
 
                 // Calculate 90d High, Low, Avg Vol
@@ -74,13 +110,16 @@ export class DataFetcher {
 
                 const avgDailyVol90d = totalDailyVol / validDailyDays;
 
-                // Calculate 60d 5m Avg Vol
+                // Calculate 60d 5m Avg Vol and last 5m volume
                 let total5mVol = 0;
                 let valid5mPeriods = 0;
-                for (const quote of min5Data.quotes) {
+                let last5mVolume = 0;
+                for (let i = 0; i < min5Data.quotes.length; i++) {
+                    const quote = min5Data.quotes[i];
                     if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
                         total5mVol += quote.volume;
                         valid5mPeriods++;
+                        last5mVolume = quote.volume; // Continually update to get the last valid one
                     }
                 }
 
@@ -95,7 +134,10 @@ export class DataFetcher {
                     high90d,
                     low90d,
                     avgDailyVol90d,
-                    avg5mVol60d
+                    avg5mVol60d,
+                    last5mVolume,
+                    last1mVolume,
+                    last1mChangePct
                 });
 
                 console.log(`[DataFetcher] Processed ${stock.symbol}`);
@@ -105,7 +147,8 @@ export class DataFetcher {
             }
         }
 
-        return this.saveToExcel(results);
+        const filePath = this.saveToExcel(results);
+        return { filePath, data: results };
     }
 
     private static getDaysAgoTimestamp(days: number): number {
@@ -146,7 +189,9 @@ export class DataFetcher {
             "90days high",
             "90days low",
             "90days daily volume average",
-            "5 min average volume for 60 days"
+            "5 min average volume for 60 days",
+            "1 min volume (mstock)",
+            "1 min change in % (mstock)"
         ];
         rows.push(headers);
 
@@ -159,7 +204,9 @@ export class DataFetcher {
                 item.high90d.toFixed(2),
                 item.low90d.toFixed(2),
                 Math.round(item.avgDailyVol90d),
-                Math.round(item.avg5mVol60d)
+                Math.round(item.avg5mVol60d),
+                item.last1mVolume,
+                item.last1mChangePct.toFixed(2) + '%'
             ]);
         });
 

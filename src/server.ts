@@ -15,8 +15,8 @@ async function startServer() {
   app.post("/api/generate-report", async (req, res) => {
     try {
       const { DataFetcher } = await import("./services/dataFetcher");
-      const filePath = await DataFetcher.generateReport();
-      res.json({ success: true, message: "Report generated successfully." });
+      const { filePath, data } = await DataFetcher.generateReport();
+      res.json({ success: true, message: "Report generated successfully.", data });
     } catch (err: any) {
       console.error(err);
       res.status(500).json({ success: false, error: err.message });
