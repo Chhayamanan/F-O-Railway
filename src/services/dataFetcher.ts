@@ -20,6 +20,14 @@ export interface StockStats {
 }
 
 export class DataFetcher {
+    private static cache: Record<string, {
+        timestamp: number;
+        high90d: number;
+        low90d: number;
+        avgDailyVol90d: number;
+        avg5mVol60d: number;
+    }> = {};
+
     public static async generateReport(): Promise<{filePath: string; data: StockStats[]}> {
         const stocks = DataKeeper.getAllStocks();
         const results: StockStats[] = [];
@@ -28,49 +36,105 @@ export class DataFetcher {
             try {
                 const querySymbol = `${stock.symbol}.NS`; 
 
-                // Fetch 90 days daily
-                const dailyData = await yahooFinance.chart(querySymbol, {
-                    period1: this.getDaysAgoTimestamp(90),
-                    interval: '1d'
-                });
+                let cached = this.cache[stock.symbol];
+                const now = Date.now();
+                // Cache for 1 hour
+                if (!cached || (now - cached.timestamp > 60 * 60 * 1000)) {
+                    // Fetch 90 days daily
+                    const dailyData = await yahooFinance.chart(querySymbol, {
+                        period1: this.getDaysAgoTimestamp(90),
+                        interval: '1d'
+                    });
 
-                // Fetch 60 days 5m (Yahoo allows max 60 days for 5m, effectively 59 days to be safe)
-                let min5Data;
-                try {
-                    min5Data = await yahooFinance.chart(querySymbol, {
-                        period1: this.getDaysAgoTimestamp(59), 
-                        interval: '5m'
-                    });
-                } catch (e) {
-                    console.warn(`[DataFetcher] Failed to fetch 60-day 5m data for ${stock.symbol}, trying 30 days.`);
-                    min5Data = await yahooFinance.chart(querySymbol, {
-                         period1: this.getDaysAgoTimestamp(30), 
-                         interval: '5m'
-                    });
+                    // Fetch 60 days 5m (Yahoo allows max 60 days for 5m, effectively 59 days to be safe)
+                    let min5Data;
+                    try {
+                        min5Data = await yahooFinance.chart(querySymbol, {
+                            period1: this.getDaysAgoTimestamp(59), 
+                            interval: '5m'
+                        });
+                    } catch (e) {
+                        min5Data = await yahooFinance.chart(querySymbol, {
+                             period1: this.getDaysAgoTimestamp(30), 
+                             interval: '5m'
+                        });
+                    }
+
+                    if (!dailyData || !dailyData.quotes || !min5Data || !min5Data.quotes) {
+                        continue;
+                    }
+
+                    let high90d = -Infinity;
+                    let low90d = Infinity;
+                    let totalDailyVol = 0;
+                    let validDailyDays = 0;
+
+                    for (const quote of dailyData.quotes) {
+                        if (quote.high !== null && quote.high !== undefined) high90d = Math.max(high90d, quote.high);
+                        if (quote.low !== null && quote.low !== undefined) low90d = Math.min(low90d, quote.low);
+                        if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
+                            totalDailyVol += quote.volume;
+                            validDailyDays++;
+                        }
+                    }
+
+                    if (high90d === -Infinity || low90d === Infinity || validDailyDays === 0) continue;
+
+                    const avgDailyVol90d = totalDailyVol / validDailyDays;
+
+                    let total5mVol = 0;
+                    let valid5mPeriods = 0;
+                    for (let i = 0; i < min5Data.quotes.length; i++) {
+                        const quote = min5Data.quotes[i];
+                        if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
+                            total5mVol += quote.volume;
+                            valid5mPeriods++;
+                        }
+                    }
+
+                    if (valid5mPeriods === 0) continue;
+                    const avg5mVol60d = total5mVol / valid5mPeriods;
+
+                    cached = {
+                        timestamp: now,
+                        high90d,
+                        low90d,
+                        avgDailyVol90d,
+                        avg5mVol60d
+                    };
+                    this.cache[stock.symbol] = cached;
                 }
 
-                // Fetch 1 min data using 5 day buffer to account for weekends 
+                // Fetch 1 min & 5 min recent data using 1-5 day buffer to account for weekends
+                let recent5Data;
+                let last5mVolume = 0;
+                try {
+                    recent5Data = await yahooFinance.chart(querySymbol, {
+                        period1: this.getDaysAgoTimestamp(5),
+                        interval: '5m'
+                    });
+                    if (recent5Data && recent5Data.quotes) {
+                        for (let i = 0; i < recent5Data.quotes.length; i++) {
+                            const quote = recent5Data.quotes[i];
+                            if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
+                                last5mVolume = quote.volume;
+                            }
+                        }
+                    }
+                } catch(e) {}
+
                 let min1Data;
                 try {
                     min1Data = await yahooFinance.chart(querySymbol, {
-                        period1: this.getDaysAgoTimestamp(5),
+                        period1: this.getDaysAgoTimestamp(2),
                         interval: '1m'
                     });
-                } catch(e) {
-                    console.warn(`[DataFetcher] Failed to fetch 1m data for ${stock.symbol}`);
-                }
-
-                if (!dailyData || !dailyData.quotes || dailyData.quotes.length === 0 ||
-                    !min5Data || !min5Data.quotes || min5Data.quotes.length === 0) {
-                    console.log(`[DataFetcher] Skipping ${stock.symbol} due to insufficient 90d or 5m data.`);
-                    continue;
-                }
+                } catch(e) {}
 
                 // 1 min info
                 let last1mVolume = 0;
                 let last1mChangePct = 0;
                 if (min1Data && min1Data.quotes && min1Data.quotes.length > 0) {
-                    // find the last valid minute quote where volume > 0
                     let lastValidQuote = null;
                     for (let i = min1Data.quotes.length - 1; i >= 0; i--) {
                         if (min1Data.quotes[i].volume && min1Data.quotes[i].volume > 0) {
@@ -78,7 +142,6 @@ export class DataFetcher {
                             break;
                         }
                     }
-                    
                     if (lastValidQuote) {
                         last1mVolume = lastValidQuote.volume || 0;
                         const open = lastValidQuote.open || 0;
@@ -89,52 +152,14 @@ export class DataFetcher {
                     }
                 }
 
-                // Calculate 90d High, Low, Avg Vol
-                let high90d = -Infinity;
-                let low90d = Infinity;
-                let totalDailyVol = 0;
-                let validDailyDays = 0;
-
-                for (const quote of dailyData.quotes) {
-                    if (quote.high !== null && quote.high !== undefined) high90d = Math.max(high90d, quote.high);
-                    if (quote.low !== null && quote.low !== undefined) low90d = Math.min(low90d, quote.low);
-                    if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
-                        totalDailyVol += quote.volume;
-                        validDailyDays++;
-                    }
-                }
-
-                if (high90d === -Infinity || low90d === Infinity || validDailyDays === 0) {
-                    continue;
-                }
-
-                const avgDailyVol90d = totalDailyVol / validDailyDays;
-
-                // Calculate 60d 5m Avg Vol and last 5m volume
-                let total5mVol = 0;
-                let valid5mPeriods = 0;
-                let last5mVolume = 0;
-                for (let i = 0; i < min5Data.quotes.length; i++) {
-                    const quote = min5Data.quotes[i];
-                    if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
-                        total5mVol += quote.volume;
-                        valid5mPeriods++;
-                        last5mVolume = quote.volume; // Continually update to get the last valid one
-                    }
-                }
-
-                if (valid5mPeriods === 0) continue;
-
-                const avg5mVol60d = total5mVol / valid5mPeriods;
-
                 results.push({
                     name: stock.name,
                     symbol: stock.symbol,
                     mstockToken: stock.mstockToken,
-                    high90d,
-                    low90d,
-                    avgDailyVol90d,
-                    avg5mVol60d,
+                    high90d: cached.high90d,
+                    low90d: cached.low90d,
+                    avgDailyVol90d: cached.avgDailyVol90d,
+                    avg5mVol60d: cached.avg5mVol60d,
                     last5mVolume,
                     last1mVolume,
                     last1mChangePct
