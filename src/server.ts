@@ -31,9 +31,7 @@ async function startServer() {
     if (!fs.existsSync(filePath)) {
       return res.status(404).send("Report not generated yet. Please click 'Refresh Now' first.");
     }
-    res.setHeader("Content-Disposition", "attachment; filename=\"Stock_Baseline_Report.xlsx\"");
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.sendFile(filePath);
+    res.download(filePath, 'Stock_Baseline_Report.xlsx');
   });
 
   app.post("/api/order", async (req, res) => {

@@ -60,8 +60,31 @@ function App() {
     };
   }, [isScanning]);
 
-  const downloadReport = () => {
-    window.location.href = '/api/download-report';
+  const downloadReport = async () => {
+    try {
+      const resp = await fetch('/api/download-report');
+      if (!resp.ok) {
+        if (resp.status === 404) {
+          alert("Report not generated yet. Please click 'Refresh Now' first.");
+        } else {
+          alert("Failed to download report.");
+        }
+        return;
+      }
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = 'Stock_Baseline_Report.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (e: any) {
+      console.error(e);
+      alert("Error downloading report.");
+    }
   };
 
   const handleOrder = async (stock: any) => {
