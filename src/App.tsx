@@ -1,259 +1,217 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 
 function App() {
+  const [activeTab, setActiveTab] = useState<'stocks' | 'nifty'>('stocks');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  
+  // Stock Tracker State
   const [results, setResults] = useState<any[]>([]);
-  const [processing, setProcessing] = useState(false);
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
   const [multiplier, setMultiplier] = useState(2.0);
+  const [isScanningStocks, setIsScanningStocks] = useState(false);
 
-  const filteredResults = useMemo(() => {
-    return results.filter(stock => 
-      stock.last1mVolume > (multiplier * stock.avg5mVol60d)
-    );
+  // Nifty Options State
+  const [niftyData, setNiftyData] = useState<{
+    ltp: number;
+    high: number;
+    low: number;
+    lastUpdated: string;
+  } | null>(null);
+  const [isScanningNifty, setIsScanningNifty] = useState(false);
+  const [niftyTargetQty, setNiftyTargetQty] = useState(25); // Standard Nifty Lot Size
+
+  // Filter for stock criteria matching
+  const filteredStocks = React.useMemo(() => {
+    return results.filter(stock => stock.last1mVolume > (multiplier * stock.avg5mVol60d));
   }, [results, multiplier]);
 
-  const generateReport = async (silent: boolean = false) => {
-    if (!silent) {
-      setLoading(true);
-      setMessage('Refreshing data...');
-    }
+  // Main Background Engine Core Routing
+  const runStockTrackerLoop = async (runAutoTrade: boolean) => {
     try {
-      const resp = await fetch('/api/generate-report', { 
+      const resp = await fetch('/api/generate-report', { method: 'POST' });
+      const data = await resp.json();
+      if (data.success && data.data) {
+        setResults(data.data);
+        if (runAutoTrade) {
+          const matches = data.data.filter((s: any) => s.last1mVolume > (multiplier * s.avg5mVol60d));
+          for (const stock of matches) {
+            const action = stock.last1mChangePct >= 0 ? 'BUY' : 'SELL';
+            await fetch('/api/order', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ symbol: stock.symbol, token: stock.mstockToken, action })
+            });
+          }
+        }
+      }
+    } catch (e) { console.error("Stock track error", e); }
+  };
+
+  const runNiftyTrackerLoop = async () => {
+    try {
+      const resp = await fetch('/api/nifty/check-breakout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ saveExcel: !silent })
+        body: JSON.stringify({ qty: niftyTargetQty })
       });
       const data = await resp.json();
       if (data.success) {
-        if (!silent) setMessage('Data refreshed successfully!');
-        if (data.data) {
-           setResults(data.data);
-           setLastRefreshed(new Date());
+        setNiftyData(data.metrics);
+        if (data.executedTrade) {
+          setMessage(`🚨 AUTO BOT: Successfully executed ${data.executedTrade} order!`);
         }
-      } else {
-        if (!silent) setMessage(`Error: ${data.error}`);
       }
-    } catch (err: any) {
-      if (!silent) setMessage(`Error: ${err.message}`);
-    } finally {
-      if (!silent) setLoading(false);
-    }
+    } catch (e) { console.error("Nifty track error", e); }
   };
+
+  // Triggering Intervals Loops
+  useEffect(() => {
+    let stockInterval: any;
+    if (isScanningStocks) {
+      stockInterval = setInterval(() => runStockTrackerLoop(true), 60 * 1000);
+    }
+    return () => clearInterval(stockInterval);
+  }, [isScanningStocks, multiplier]);
 
   useEffect(() => {
-    // Initial fetch on mount
-    generateReport(true);
-  }, []);
-
-  useEffect(() => {
-    let intervalId: any;
-    if (isScanning) {
-      intervalId = setInterval(() => {
-        generateReport(true);
-      }, 60 * 1000);
+    let niftyInterval: any;
+    if (isScanningNifty) {
+      niftyInterval = setInterval(() => runNiftyTrackerLoop(), 5 * 1000); // Tight 5s loop for derivative options
     }
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [isScanning]);
-
-  const downloadReport = async () => {
-    try {
-      const resp = await fetch('/api/download-report');
-      if (!resp.ok) {
-        if (resp.status === 404) {
-          alert("Report not generated yet. Please click 'Refresh Now' first.");
-        } else {
-          alert("Failed to download report.");
-        }
-        return;
-      }
-      const blob = await resp.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = 'Stock_Baseline_Report.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      a.remove();
-    } catch (e: any) {
-      console.error(e);
-      alert("Error downloading report.");
-    }
-  };
-
-  const handleOrder = async (stock: any) => {
-    const action = stock.last1mChangePct >= 0 ? 'BUY' : 'SELL';
-    try {
-      const res = await fetch('/api/order', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          symbol: stock.symbol,
-          token: stock.mstockToken,
-          action
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert(`Successfully placed ${action} order for ${stock.symbol}`);
-      } else {
-        alert(`Failed to place ${action} order for ${stock.symbol}: ${data.error}`);
-      }
-    } catch (e: any) {
-      alert(`Error placing order: ${e.message}`);
-    }
-  };
-
-  const handleAutoAll = async () => {
-     if (!filteredResults.length) return;
-     setProcessing(true);
-     let successCount = 0;
-     let failCount = 0;
-     for (const stock of filteredResults) {
-        const action = stock.last1mChangePct >= 0 ? 'BUY' : 'SELL';
-        try {
-          const res = await fetch('/api/order', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symbol: stock.symbol, token: stock.mstockToken, action })
-          });
-          const data = await res.json();
-          if (data.success) successCount++;
-          else failCount++;
-        } catch (e) {
-          failCount++;
-        }
-     }
-     setProcessing(false);
-     alert(`Finished processing. Success: ${successCount}. Failed: ${failCount}`);
-  };
+    return () => clearInterval(niftyInterval);
+  }, [isScanningNifty, niftyTargetQty]);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-start justify-center p-8 font-sans text-slate-900 mt-10">
-      <div className="max-w-5xl w-full bg-white rounded-xl shadow-sm border border-slate-200 p-8 space-y-8">
+    <div className="min-h-screen bg-slate-900 text-slate-100 flex items-start justify-center p-8 font-sans">
+      <div className="max-w-5xl w-full bg-slate-800 rounded-xl shadow-2xl border border-slate-700 p-8 space-y-6">
         
-        <div className="flex flex-col md:flex-row items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-900 mb-2">1-Min Action Radar</h1>
-              <p className="text-slate-500 text-sm">
-                Real-time 1m tracking for Intraday Buy/Sell decisions.
-                {lastRefreshed && <span className="ml-2 font-medium text-slate-700">Last updated: {lastRefreshed.toLocaleTimeString()}</span>}
-              </p>
-            </div>
-            <div className="flex gap-2 mt-4 md:mt-0">
-                <button
-                    onClick={() => setIsScanning(!isScanning)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all text-sm shadow-sm ${
-                      isScanning 
-                        ? 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100' 
-                        : 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
-                    }`}
-                >
-                    {isScanning ? 'Stop Auto-Scan' : 'Start Auto-Scan'}
-                </button>
-                <button
-                    onClick={downloadReport}
-                    className="px-4 py-2 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg font-medium hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:ring-offset-2 transition-all text-sm shadow-sm"
-                >
-                    Download Excel
-                </button>
-                <button
-                    onClick={() => generateReport(false)}
-                    disabled={loading}
-                    className="px-4 py-2 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:opacity-50 transition-all text-sm shadow-sm"
-                >
-                    {loading ? 'Refreshing...' : 'Refresh Now'}
-                </button>
-            </div>
+        {/* Navigation Tabs Header */}
+        <div className="flex items-center justify-between border-b border-slate-700 pb-4">
+          <div className="flex gap-4">
+            <button 
+              onClick={() => setActiveTab('stocks')}
+              className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${activeTab === 'stocks' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+            >
+              📈 1-Min Stock Radar
+            </button>
+            <button 
+              onClick={() => setActiveTab('nifty')}
+              className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${activeTab === 'nifty' ? 'bg-purple-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+            >
+              ⚡ Nifty Options Range Breakout
+            </button>
+          </div>
+          <span className="text-xs font-mono text-slate-400">System Mode: Automated High-Frequency Execution</span>
         </div>
 
-        {message && message.startsWith('Error') && (
-          <div className="p-4 rounded-lg bg-red-50 border border-red-100 text-sm text-red-600 text-center">
+        {message && (
+          <div className="p-4 rounded-lg bg-blue-900/40 border border-blue-700 text-sm text-blue-300 text-center animate-pulse">
             {message}
           </div>
         )}
 
-        <div className="pt-4 border-t border-slate-200 space-y-6">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">Live Tracker</h2>
+        {/* TAB 1: STOCKS RADAR */}
+        {activeTab === 'stocks' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between bg-slate-850 p-4 rounded-xl border border-slate-700">
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium text-slate-300">Volume Multiplier:</label>
+                <input 
+                  type="number" step="0.1" value={multiplier} 
+                  onChange={(e) => setMultiplier(parseFloat(e.target.value) || 0)}
+                  className="w-20 px-2 py-1 rounded bg-slate-700 text-white text-center border border-slate-600 focus:outline-none"
+                />
               </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2 shadow-sm">
-                  <label className="text-sm font-medium text-slate-700 whitespace-nowrap pl-2">Volume Multiplier (1m &gt; X * 5m avg):</label>
-                  <input 
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={multiplier}
-                    onChange={(e) => setMultiplier(parseFloat(e.target.value) || 0)}
-                    className="w-20 px-2 py-1 rounded bg-white border border-slate-300 text-sm text-center focus:outline-none focus:ring-2 focus:ring-slate-900" 
-                  />
-                </div>
-                <button onClick={handleAutoAll} disabled={processing || filteredResults.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 shadow-sm font-medium">
-                  {processing ? 'Processing...' : 'Auto-Execute All'}
-                </button>
-              </div>
+              <button 
+                onClick={() => setIsScanningStocks(!isScanningStocks)}
+                className={`px-6 py-2 rounded-lg font-bold text-sm ${isScanningStocks ? 'bg-red-600 animate-pulse' : 'bg-green-600'}`}
+              >
+                {isScanningStocks ? '🛑 STOP STOCK BOT' : '🚀 START STOCK BOT'}
+              </button>
             </div>
-
-            <div className="overflow-x-auto rounded-lg border border-slate-200 shadow-sm">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+            
+            {/* Stock Rendering Grid */}
+            <div className="overflow-x-auto rounded-lg border border-slate-700">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-700 text-slate-300">
                   <tr>
-                    <th className="py-3 px-4 font-medium">Stock Name</th>
-                    <th className="py-3 px-4 font-medium text-right">Avg 5m Vol (60d)</th>
-                    <th className="py-3 px-4 font-medium text-right">1m Vol</th>
-                    <th className="py-3 px-4 font-medium text-right">1m Change</th>
-                    <th className="py-3 px-4 font-medium text-center">Decision</th>
-                    <th className="py-3 px-4 font-medium text-center">Action</th>
+                    <th className="p-4">Symbol</th>
+                    <th className="p-4 text-right">Avg 5m Vol</th>
+                    <th className="p-4 text-right">Current 1m Vol</th>
+                    <th className="p-4 text-right">1m Change</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredResults.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 bg-white text-center text-slate-500">
-                        <p className="text-base text-slate-600 font-medium mb-1">No data available or no stocks meet volume criteria</p>
-                        <p className="text-sm">Click Refresh Now to load stock data.</p>
-                      </td>
-                    </tr>
+                <tbody className="divide-y divide-slate-700 bg-slate-800">
+                  {filteredStocks.length === 0 ? (
+                    <tr><td colSpan={4} className="p-8 text-center text-slate-500">No volume breakouts detected. Run tracking engine.</td></tr>
                   ) : (
-                    filteredResults.map((stock, i) => {
-                      const changePositive = stock.last1mChangePct >= 0;
-                      const actionType = changePositive ? 'BUY' : 'SELL';
-                      
-                      return (
-                        <tr key={i} className="bg-white hover:bg-slate-50 transition-colors">
-                          <td className="py-3 px-4 font-medium text-slate-900">{stock.symbol}</td>
-                          <td className="py-3 px-4 text-right text-slate-600">{Math.round(stock.avg5mVol60d).toLocaleString()}</td>
-                          <td className="py-3 px-4 text-right text-slate-600">{stock.last1mVolume.toLocaleString()}</td>
-                          <td className={`py-3 px-4 text-right font-medium ${changePositive ? 'text-green-600' : 'text-red-500'}`}>
-                             {changePositive ? '+' : ''}{stock.last1mChangePct.toFixed(2)}%
-                          </td>
-                          <td className={`py-3 px-4 text-center font-bold ${actionType === 'BUY' ? 'text-green-600' : 'text-red-600'}`}>
-                            {actionType}
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <button onClick={() => handleOrder(stock)} className={`px-4 py-1.5 text-white rounded text-xs font-medium transition-colors shadow-sm ${actionType === 'BUY' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
-                              {actionType} 1 Qty
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })
+                    filteredStocks.map((stock, i) => (
+                      <tr key={i} className="hover:bg-slate-750">
+                        <td className="p-4 font-bold">{stock.symbol}</td>
+                        <td className="p-4 text-right text-slate-400">{Math.round(stock.avg5mVol60d).toLocaleString()}</td>
+                        <td className="p-4 text-right text-slate-400">{stock.last1mVolume.toLocaleString()}</td>
+                        <td className={`p-4 text-right font-medium ${stock.last1mChangePct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {stock.last1mChangePct.toFixed(2)}%
+                        </td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
 
-        </div>
+        {/* TAB 2: NIFTY OPTIONS RANGE BREAKOUT */}
+        {activeTab === 'nifty' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-slate-700/50 rounded-xl border border-slate-600 text-center">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Nifty Spot Price</p>
+                <p className="text-3xl font-mono font-bold text-blue-400 mt-1">
+                  {niftyData?.ltp ? niftyData.ltp.toFixed(2) : '---.--'}
+                </p>
+              </div>
+              <div className="p-4 bg-green-950/30 rounded-xl border border-green-800/50 text-center">
+                <p className="text-xs font-semibold text-green-400 uppercase tracking-wider">Session Range High</p>
+                <p className="text-3xl font-mono font-bold text-green-400 mt-1">
+                  {niftyData?.high ? niftyData.high.toFixed(2) : '---.--'}
+                </p>
+              </div>
+              <div className="p-4 bg-red-950/30 rounded-xl border border-red-800/50 text-center">
+                <p className="text-xs font-semibold text-red-400 uppercase tracking-wider">Session Range Low</p>
+                <p className="text-3xl font-mono font-bold text-red-400 mt-1">
+                  {niftyData?.low ? niftyData.low.toFixed(2) : '---.--'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between bg-slate-850 p-4 rounded-xl border border-slate-700">
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium text-slate-300">Option Target Contract Qty Size:</label>
+                <input 
+                  type="number" step="25" value={niftyTargetQty} 
+                  onChange={(e) => setNiftyTargetQty(parseInt(e.target.value) || 25)}
+                  className="w-24 px-2 py-1 rounded bg-slate-700 text-white text-center border border-slate-600 focus:outline-none"
+                />
+              </div>
+              <button 
+                onClick={() => setIsScanningNifty(!isScanningNifty)}
+                className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${isScanningNifty ? 'bg-red-600 animate-pulse' : 'bg-purple-600 hover:bg-purple-700'}`}
+              >
+                {isScanningNifty ? '🛑 STOP NIFTY OPTIONS ROBOT' : '🚀 RUN NIFTY OPTIONS ROBOT'}
+              </button>
+            </div>
+
+            <div className="p-6 bg-slate-850 rounded-xl border border-slate-700 space-y-3 text-sm leading-relaxed text-slate-300">
+              <h3 className="font-bold text-white text-base">🤖 Automated Derivative Execution Rules:</h3>
+              <p>• The system continuously polls Nifty index price metrics inside an independent pipeline loop every 5 seconds.</p>
+              <p>• If <span className="text-blue-400 font-mono">Current Spot Price</span> breaks above the established <span className="text-green-400 font-bold">Session High</span>, the bot automatically finds the nearest At-The-Money strike contract and purchases a <span className="text-green-400 font-bold">CALL Option (CE)</span>.</p>
+              <p>• If <span className="text-blue-400 font-mono">Current Spot Price</span> drops below the established <span className="text-red-400 font-bold">Session Low</span>, the bot instantly fires a request to buy a <span className="text-red-400 font-bold">PUT Option (PE)</span> contract.</p>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
