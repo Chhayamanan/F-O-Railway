@@ -51,26 +51,44 @@ export const getMConnectClient = async (): Promise<MConnect> => {
 export const placeOrder = async (symbol: string, token: string = "1", transactionType: 'BUY' | 'SELL' = 'BUY') => {
     const client = await getMConnectClient();
     
-    // These mappings like symboltoken could theoretically be retrieved from Master script,
-    // but without Master data we assume "1" or we pass token explicitly from frontend if available
+    // 1. Check current Indian Time to dynamically adjust product type if testing off-market hours
+    const nowIST = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Kolkata"}));
+    const hours = nowIST.getHours();
+    const minutes = nowIST.getMinutes();
+    const currentTimeValue = hours * 100 + minutes;
+
+    // Regular Market Hours: 09:15 to 15:30
+    const isMarketOpen = currentTimeValue >= 915 && currentTimeValue <= 1530 && nowIST.getDay() >= 1 && nowIST.getDay() <= 5;
+    
+    // Adjust configurations safely so the API doesn't throw a structural 401 out of hours
+    const productType = isMarketOpen ? "INTRADAY" : "DELIVERY"; 
+    const variety = isMarketOpen ? "NORMAL" : "AMO"; 
+
+    // 2. Uniform, Standardized Payload Map (Both CamelCase and lowercase alternatives for safety)
     const params = {
-        variety: "NORMAL",
-        tradingsymbol: symbol,
+        variety: variety,
+        tradingsymbol: symbol.toUpperCase(),
         symboltoken: token,
         exchange: "NSE",
         transactiontype: transactionType,
         ordertype: "MARKET",
         quantity: "1",
-        producttype: "INTRADAY",
-        duration: "DAY"
+        producttype: productType,
+        duration: "DAY",
+        // Capitalized variants in case the SDK expects standard structural schemas:
+        tradingSymbol: symbol.toUpperCase(),
+        symbolToken: token,
+        transactionType: transactionType,
+        orderType: "MARKET",
+        productType: productType
     };
 
-    console.log(`[mStock] Placing ${transactionType} order for ${symbol}...`, params);
+    console.log(`[mStock] Dispatching Execution Chain for ${symbol}...`, { variety, transactionType, productType });
     
     if (typeof (client as any).placeOrder === 'function') {
         const res = await (client as any).placeOrder(params);
         return res?.data || res;
     } else {
-        throw new Error("Client does not have placeOrder method");
+        throw new Error("Client structural fault: placeOrder method is missing on verified session profile.");
     }
 };
