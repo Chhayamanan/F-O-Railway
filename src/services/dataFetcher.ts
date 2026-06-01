@@ -1,10 +1,14 @@
-import YahooFinance from 'yahoo-finance2';
+const YFModule = require('yahoo-finance2');
 import * as xlsx from 'xlsx';
 import * as fs from 'fs';
 import * as path from 'path';
 import { DataKeeper, StockData } from '../core/dataKeeper';
 
-const yahooFinance = new YahooFinance();
+let YFClass = YFModule.default || YFModule;
+if (typeof YFClass !== 'function' && typeof YFModule.default?.default === 'function') {
+  YFClass = YFModule.default.default;
+}
+const yahooFinance = typeof YFClass === 'function' ? new YFClass() : (typeof YFClass.default === 'function' ? new YFClass.default() : null);
 
 export interface StockStats {
     name: string;

@@ -1,6 +1,8 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import { DataFetcher } from "./services/dataFetcher";
+import { placeBuyOrder } from "./services/mStockService";
 
 async function startServer() {
   const app = express();
@@ -14,7 +16,6 @@ async function startServer() {
 
   app.post("/api/generate-report", async (req, res) => {
     try {
-      const { DataFetcher } = await import("./services/dataFetcher");
       const { filePath, data } = await DataFetcher.generateReport();
       res.json({ success: true, message: "Report generated successfully.", data });
     } catch (err: any) {
@@ -31,7 +32,6 @@ async function startServer() {
   app.post("/api/buy", async (req, res) => {
     try {
       const { symbol, token } = req.body;
-      const { placeBuyOrder } = await import("./services/mStockService");
       
       console.log(`Received buy request for ${symbol}`);
       const finalToken = token || "11050";
