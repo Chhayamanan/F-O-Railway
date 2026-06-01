@@ -41,14 +41,8 @@ export const getMConnectClient = async (): Promise<MConnect> => {
            throw new Error("Failed to login to mStock: " + JSON.stringify((res as any).data || res));
         }
     } catch (e: any) {
-        // Just mock it so we don't crash entirely in UI for demo 
-        console.warn("MConnect login failed, returning mocked client", e.message);
-        return {
-            placeOrder: async (params: any) => {
-                console.log("[MOCK] mStock PlaceOrder called with", params);
-                return { success: true, fake: true };
-            }
-        } as any;
+        console.error("MConnect login failed:", e.message);
+        throw new Error("MConnect login failed: " + e.message);
     }
     
     return client;
@@ -73,9 +67,10 @@ export const placeOrder = async (symbol: string, token: string = "1", transactio
 
     console.log(`[mStock] Placing ${transactionType} order for ${symbol}...`, params);
     
-    if ((client as any).placeOrder) {
+    if (typeof (client as any).placeOrder === 'function') {
         const res = await (client as any).placeOrder(params);
         return res?.data || res;
+    } else {
+        throw new Error("Client does not have placeOrder method");
     }
-    return { success: true, mocked: true };
 };

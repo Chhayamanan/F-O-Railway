@@ -7,6 +7,13 @@ function App() {
   const [processing, setProcessing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [multiplier, setMultiplier] = useState(2.0);
+
+  const filteredResults = useMemo(() => {
+    return results.filter(stock => 
+      stock.last1mVolume > (multiplier * stock.avg5mVol60d)
+    );
+  }, [results, multiplier]);
 
   const generateReport = async (silent: boolean = false) => {
     if (!silent) {
@@ -79,11 +86,11 @@ function App() {
   };
 
   const handleAutoAll = async () => {
-     if (!results.length) return;
+     if (!filteredResults.length) return;
      setProcessing(true);
      let successCount = 0;
      let failCount = 0;
-     for (const stock of results) {
+     for (const stock of filteredResults) {
         const action = stock.last1mChangePct >= 0 ? 'BUY' : 'SELL';
         try {
           const res = await fetch('/api/order', {
@@ -153,7 +160,18 @@ function App() {
                 <h2 className="text-xl font-semibold text-slate-900">Live Tracker</h2>
               </div>
               <div className="flex items-center gap-3">
-                <button onClick={handleAutoAll} disabled={processing || results.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 shadow-sm font-medium">
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2 shadow-sm">
+                  <label className="text-sm font-medium text-slate-700 whitespace-nowrap pl-2">Volume Multiplier (1m &gt; X * 5m avg):</label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={multiplier}
+                    onChange={(e) => setMultiplier(parseFloat(e.target.value) || 0)}
+                    className="w-20 px-2 py-1 rounded bg-white border border-slate-300 text-sm text-center focus:outline-none focus:ring-2 focus:ring-slate-900" 
+                  />
+                </div>
+                <button onClick={handleAutoAll} disabled={processing || filteredResults.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 shadow-sm font-medium">
                   {processing ? 'Processing...' : 'Auto-Execute All'}
                 </button>
               </div>
@@ -172,15 +190,15 @@ function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {results.length === 0 ? (
+                  {filteredResults.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-12 bg-white text-center text-slate-500">
-                        <p className="text-base text-slate-600 font-medium mb-1">No data available</p>
+                        <p className="text-base text-slate-600 font-medium mb-1">No data available or no stocks meet volume criteria</p>
                         <p className="text-sm">Click Refresh Now to load stock data.</p>
                       </td>
                     </tr>
                   ) : (
-                    results.map((stock, i) => {
+                    filteredResults.map((stock, i) => {
                       const changePositive = stock.last1mChangePct >= 0;
                       const actionType = changePositive ? 'BUY' : 'SELL';
                       
