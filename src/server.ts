@@ -8,7 +8,7 @@ import { placeOrder } from "./services/mStockService";
 async function startServer() {
   const app = express();
   
-  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+  const PORT = process.env.PORT || 3000;
   app.use(express.json());
 
   app.get("/api/health", (req, res) => {
@@ -68,7 +68,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, () => {
     console.log(`[SYSTEM] Server successfully bound to port ${PORT}.`);
   });
 }
