@@ -1,4 +1,4 @@
-const YFModule = require('yahoo-finance2');
+import * as YFModule from 'yahoo-finance2';
 import * as xlsx from 'xlsx';
 import * as fs from 'fs';
 import * as path from 'path';

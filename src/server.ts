@@ -1,13 +1,14 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { DataFetcher } from "./services/dataFetcher";
 import { placeOrder } from "./services/mStockService";
 
 async function startServer() {
   const app = express();
   
-  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+  const PORT = 3000;
   app.use(express.json());
 
   app.get("/api/health", (req, res) => {
@@ -27,7 +28,12 @@ async function startServer() {
 
   app.get("/api/download-report", (req, res) => {
     const filePath = path.join(process.cwd(), 'Stock_Baseline_Report.xlsx');
-    res.download(filePath, 'Stock_Baseline_Report.xlsx');
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send("Report not generated yet. Please click 'Refresh Now' first.");
+    }
+    res.setHeader("Content-Disposition", "attachment; filename=\"Stock_Baseline_Report.xlsx\"");
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.sendFile(filePath);
   });
 
   app.post("/api/order", async (req, res) => {
