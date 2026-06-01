@@ -54,7 +54,7 @@ export const getMConnectClient = async (): Promise<MConnect> => {
     return client;
 };
 
-export const placeBuyOrder = async (symbol: string, token: string = "1") => {
+export const placeOrder = async (symbol: string, token: string = "1", transactionType: 'BUY' | 'SELL' = 'BUY') => {
     const client = await getMConnectClient();
     
     // These mappings like symboltoken could theoretically be retrieved from Master script,
@@ -64,14 +64,14 @@ export const placeBuyOrder = async (symbol: string, token: string = "1") => {
         tradingsymbol: symbol,
         symboltoken: token,
         exchange: "NSE",
-        transactiontype: "BUY",
+        transactiontype: transactionType,
         ordertype: "MARKET",
         quantity: "1",
         producttype: "INTRADAY",
         duration: "DAY"
     };
 
-    console.log(`[mStock] Placing BUY order for ${symbol}...`, params);
+    console.log(`[mStock] Placing ${transactionType} order for ${symbol}...`, params);
     
     if ((client as any).placeOrder) {
         const res = await (client as any).placeOrder(params);

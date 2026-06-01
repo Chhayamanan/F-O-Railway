@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import { DataFetcher } from "./services/dataFetcher";
-import { placeBuyOrder } from "./services/mStockService";
+import { placeOrder } from "./services/mStockService";
 
 async function startServer() {
   const app = express();
@@ -29,13 +29,13 @@ async function startServer() {
     res.download(filePath, 'Stock_Baseline_Report.xlsx');
   });
 
-  app.post("/api/buy", async (req, res) => {
+  app.post("/api/order", async (req, res) => {
     try {
-      const { symbol, token } = req.body;
+      const { symbol, token, action } = req.body;
       
-      console.log(`Received buy request for ${symbol}`);
+      console.log(`Received ${action} request for ${symbol}`);
       const finalToken = token || "11050";
-      const result = await placeBuyOrder(symbol, finalToken);
+      const result = await placeOrder(symbol, finalToken, action);
       res.json({ success: true, result });
     } catch (err: any) {
       console.error(err);

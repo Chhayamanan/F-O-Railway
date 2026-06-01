@@ -134,25 +134,9 @@ export class DataFetcher {
                     }
                 }
 
-                // Fetch 1 min & 5 min recent data using 1-5 day buffer to account for weekends
-                let recent5Data;
-                let last5mVolume = 0;
-                try {
-                    recent5Data = await this.fetchChartWithRetry(querySymbol, {
-                        period1: this.getDaysAgoTimestamp(5),
-                        interval: '5m'
-                    });
-                    if (recent5Data && recent5Data.quotes) {
-                        for (let i = 0; i < recent5Data.quotes.length; i++) {
-                            const quote = recent5Data.quotes[i];
-                            if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
-                                last5mVolume = quote.volume;
-                            }
-                        }
-                    }
-                } catch(e) {}
-
+                // Fetch 1 min recent data using 1-5 day buffer to account for weekends
                 let min1Data;
+                let last5mVolume = 0; // Just putting 0 to not break types if used later, though we can remove it from results if we want.
                 try {
                     min1Data = await this.fetchChartWithRetry(querySymbol, {
                         period1: this.getDaysAgoTimestamp(2),
