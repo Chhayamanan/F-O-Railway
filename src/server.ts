@@ -8,7 +8,8 @@ import { placeOrder } from "./services/mStockService";
 async function startServer() {
   const app = express();
   
-  const PORT = process.env.PORT || 3000;
+  const isAIStudio = !!process.env.APPLET_ID;
+  const serverPort = (process.env.PORT && !isAIStudio) ? Number(process.env.PORT) : 3000;
   app.use(express.json());
 
   app.get("/api/health", (req, res) => {
@@ -68,9 +69,15 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, () => {
-    console.log(`[SYSTEM] Server successfully bound to port ${PORT}.`);
-  });
+  if (isAIStudio) {
+    app.listen(serverPort, '0.0.0.0', () => {
+      console.log(`[SYSTEM] Server successfully running on port ${serverPort}.`);
+    });
+  } else {
+    app.listen(serverPort, () => {
+      console.log(`[SYSTEM] Server successfully running on port ${serverPort}.`);
+    });
+  }
 }
 
 startServer();
