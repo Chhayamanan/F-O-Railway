@@ -16,7 +16,8 @@ async function startServer() {
 
   app.post("/api/generate-report", async (req, res) => {
     try {
-      const { filePath, data } = await DataFetcher.generateReport();
+      const saveExcel = req.body.saveExcel !== false;
+      const { filePath, data } = await DataFetcher.generateReport(saveExcel);
       res.json({ success: true, message: "Report generated successfully.", data });
     } catch (err: any) {
       console.error(err);

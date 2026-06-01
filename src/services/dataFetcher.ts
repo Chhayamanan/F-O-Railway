@@ -43,7 +43,7 @@ export class DataFetcher {
         }
     }
 
-    public static async generateReport(): Promise<{filePath: string; data: StockStats[]}> {
+    public static async generateReport(saveExcel: boolean = true): Promise<{filePath: string | null; data: StockStats[]}> {
         const stocks = DataKeeper.getAllStocks();
         const results: StockStats[] = [];
 
@@ -185,7 +185,10 @@ export class DataFetcher {
             }
         }
 
-        const filePath = this.saveToExcel(results);
+        let filePath: string | null = null;
+        if (saveExcel) {
+            filePath = this.saveToExcel(results);
+        }
         return { filePath, data: results };
     }
 
