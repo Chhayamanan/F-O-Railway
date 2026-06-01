@@ -10,6 +10,8 @@ if (typeof YFClass !== 'function' && typeof YFModule.default?.default === 'funct
 }
 const yahooFinance = typeof YFClass === 'function' ? new YFClass() : (typeof YFClass.default === 'function' ? new YFClass.default() : null);
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export interface StockStats {
     name: string;
     symbol: string;
@@ -47,96 +49,100 @@ export class DataFetcher {
         const stocks = DataKeeper.getAllStocks();
         const results: StockStats[] = [];
 
+        // OPTIONAL GLOBAL FIX: Tell the library to mirror a standard browser if supported by your version
+        if (typeof yahooFinance.setGlobalConfig === 'function') {
+            yahooFinance.setGlobalConfig({
+                request: {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    }
+                }
+            });
+        }
+
         for (const stock of stocks) {
             try {
                 const querySymbol = `${stock.symbol}.NS`; 
 
                 let cached = this.cache[stock.symbol];
                 const now = Date.now();
-                // Cache for 1 hour
+                
                 if (!cached || (now - cached.timestamp > 60 * 60 * 1000)) {
+                    // Introduce a 1.5-second pacing delay before hit requests to prevent data center firewalls from snapping
+                    await sleep(1500);
+
+                    // Fetch 90 days daily
+                    const dailyData = await this.fetchChartWithRetry(querySymbol, {
+                        period1: this.getDaysAgoTimestamp(90),
+                        interval: '1d'
+                    });
+
+                    // Small pause between internal history calls
+                    await sleep(500);
+
+                    // Fetch 60 days 5m
+                    let min5Data;
                     try {
-                        // Fetch 90 days daily
-                        const dailyData = await this.fetchChartWithRetry(querySymbol, {
-                            period1: this.getDaysAgoTimestamp(90),
-                            interval: '1d'
+                        min5Data = await this.fetchChartWithRetry(querySymbol, {
+                            period1: this.getDaysAgoTimestamp(59), 
+                            interval: '5m'
                         });
+                    } catch (e) {
+                        min5Data = await this.fetchChartWithRetry(querySymbol, {
+                            period1: this.getDaysAgoTimestamp(30), 
+                            interval: '5m'
+                        });
+                    }
 
-                        // Fetch 60 days 5m (Yahoo allows max 60 days for 5m, effectively 59 days to be safe)
-                        let min5Data;
-                        try {
-                            min5Data = await this.fetchChartWithRetry(querySymbol, {
-                                period1: this.getDaysAgoTimestamp(59), 
-                                interval: '5m'
-                            });
-                        } catch (e) {
-                            min5Data = await this.fetchChartWithRetry(querySymbol, {
-                                period1: this.getDaysAgoTimestamp(30), 
-                                interval: '5m'
-                            });
-                        }
+                    if (!dailyData || !dailyData.quotes || !min5Data || !min5Data.quotes) {
+                        throw new Error("Missing quotes data structure");
+                    }
 
-                        if (!dailyData || !dailyData.quotes || !min5Data || !min5Data.quotes) {
-                            throw new Error("Missing quotes data");
-                        }
+                    let high90d = -Infinity;
+                    let low90d = Infinity;
+                    let totalDailyVol = 0;
+                    let validDailyDays = 0;
 
-                        let high90d = -Infinity;
-                        let low90d = Infinity;
-                        let totalDailyVol = 0;
-                        let validDailyDays = 0;
-
-                        for (const quote of dailyData.quotes) {
-                            if (quote.high !== null && quote.high !== undefined) high90d = Math.max(high90d, quote.high);
-                            if (quote.low !== null && quote.low !== undefined) low90d = Math.min(low90d, quote.low);
-                            if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
-                                totalDailyVol += quote.volume;
-                                validDailyDays++;
-                            }
-                        }
-
-                        if (high90d === -Infinity || low90d === Infinity || validDailyDays === 0) throw new Error("Missing volume/price data");
-
-                        const avgDailyVol90d = totalDailyVol / validDailyDays;
-
-                        let total5mVol = 0;
-                        let valid5mPeriods = 0;
-                        for (let i = 0; i < min5Data.quotes.length; i++) {
-                            const quote = min5Data.quotes[i];
-                            if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
-                                total5mVol += quote.volume;
-                                valid5mPeriods++;
-                            }
-                        }
-
-                        if (valid5mPeriods === 0) throw new Error("Missing 5m volume data");
-                        const avg5mVol60d = total5mVol / valid5mPeriods;
-
-                        cached = {
-                            timestamp: now,
-                            high90d,
-                            low90d,
-                            avgDailyVol90d,
-                            avg5mVol60d
-                        };
-                        this.cache[stock.symbol] = cached;
-                    } catch (e: any) {
-                        console.warn(`[DataFetcher] Background lookup failed for ${stock.symbol}: ${e.message}`);
-                        // If we have stale cache, continue using it. Else, create a zeroed fallback.
-                        if (!cached) {
-                            cached = {
-                                timestamp: now - 59 * 60 * 1000, // force refresh sooner
-                                high90d: 0,
-                                low90d: 0,
-                                avgDailyVol90d: 0,
-                                avg5mVol60d: 0
-                            };
+                    for (const quote of dailyData.quotes) {
+                        if (quote.high !== null && quote.high !== undefined) high90d = Math.max(high90d, quote.high);
+                        if (quote.low !== null && quote.low !== undefined) low90d = Math.min(low90d, quote.low);
+                        if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
+                            totalDailyVol += quote.volume;
+                            validDailyDays++;
                         }
                     }
+
+                    if (high90d === -Infinity || low90d === Infinity || validDailyDays === 0) throw new Error("Missing volume/price parameters");
+
+                    const avgDailyVol90d = totalDailyVol / validDailyDays;
+
+                    let total5mVol = 0;
+                    let valid5mPeriods = 0;
+                    for (let i = 0; i < min5Data.quotes.length; i++) {
+                        const quote = min5Data.quotes[i];
+                        if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
+                            total5mVol += quote.volume;
+                            valid5mPeriods++;
+                        }
+                    }
+
+                    if (valid5mPeriods === 0) throw new Error("Missing 5m historical volume matrix");
+                    const avg5mVol60d = total5mVol / valid5mPeriods;
+
+                    cached = {
+                        timestamp: now,
+                        high90d,
+                        low90d,
+                        avgDailyVol90d,
+                        avg5mVol60d
+                    };
+                    this.cache[stock.symbol] = cached;
                 }
 
-                // Fetch 1 min recent data using 1-5 day buffer to account for weekends
+                // Small break before querying the 1-minute breakout candle info
+                await sleep(500);
+
                 let min1Data;
-                let last5mVolume = 0; // Just putting 0 to not break types if used later, though we can remove it from results if we want.
                 try {
                     min1Data = await this.fetchChartWithRetry(querySymbol, {
                         period1: this.getDaysAgoTimestamp(2),
@@ -144,7 +150,6 @@ export class DataFetcher {
                     });
                 } catch(e) {}
 
-                // 1 min info
                 let last1mVolume = 0;
                 let last1mChangePct = 0;
                 if (min1Data && min1Data.quotes && min1Data.quotes.length > 0) {
@@ -173,15 +178,30 @@ export class DataFetcher {
                     low90d: cached.low90d,
                     avgDailyVol90d: cached.avgDailyVol90d,
                     avg5mVol60d: cached.avg5mVol60d,
-                    last5mVolume,
+                    last5mVolume: 0,
                     last1mVolume,
                     last1mChangePct
                 });
 
-                console.log(`[DataFetcher] Processed ${stock.symbol}`);
+                console.log(`[DataFetcher] Processed ${stock.symbol} successfully.`);
 
             } catch (err: any) {
-                console.warn(`[DataFetcher] Failed to fetch data for ${stock.symbol}: ${err.message}`);
+                console.warn(`[DataFetcher] Background lookup failed for ${stock.symbol}: ${err.message}`);
+                
+                // FALLBACK SAFETY NET: If it completely blocks us, supply a temporary dummy safe object 
+                // so your application logic does not crash or leave the data blank.
+                results.push({
+                    name: stock.name,
+                    symbol: stock.symbol,
+                    mstockToken: stock.mstockToken,
+                    high90d: 0,
+                    low90d: 0,
+                    avgDailyVol90d: 0,
+                    avg5mVol60d: 1000, // safety assignment to avoid Division-by-Zero errors on the multiplier
+                    last5mVolume: 0,
+                    last1mVolume: 0,
+                    last1mChangePct: 0
+                });
             }
         }
 
