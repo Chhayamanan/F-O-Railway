@@ -32,6 +32,17 @@ export class DataFetcher {
         avg5mVol60d: number;
     }> = {};
 
+    private static async fetchChartWithRetry(symbol: string, options: any, retries: number = 3): Promise<any> {
+        for (let i = 0; i < retries; i++) {
+            try {
+                return await yahooFinance.chart(symbol, options);
+            } catch (err: any) {
+                if (i === retries - 1) throw err;
+                await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1))); // Exponential backoff
+            }
+        }
+    }
+
     public static async generateReport(): Promise<{filePath: string; data: StockStats[]}> {
         const stocks = DataKeeper.getAllStocks();
         const results: StockStats[] = [];
@@ -44,76 +55,90 @@ export class DataFetcher {
                 const now = Date.now();
                 // Cache for 1 hour
                 if (!cached || (now - cached.timestamp > 60 * 60 * 1000)) {
-                    // Fetch 90 days daily
-                    const dailyData = await yahooFinance.chart(querySymbol, {
-                        period1: this.getDaysAgoTimestamp(90),
-                        interval: '1d'
-                    });
-
-                    // Fetch 60 days 5m (Yahoo allows max 60 days for 5m, effectively 59 days to be safe)
-                    let min5Data;
                     try {
-                        min5Data = await yahooFinance.chart(querySymbol, {
-                            period1: this.getDaysAgoTimestamp(59), 
-                            interval: '5m'
+                        // Fetch 90 days daily
+                        const dailyData = await this.fetchChartWithRetry(querySymbol, {
+                            period1: this.getDaysAgoTimestamp(90),
+                            interval: '1d'
                         });
-                    } catch (e) {
-                        min5Data = await yahooFinance.chart(querySymbol, {
-                             period1: this.getDaysAgoTimestamp(30), 
-                             interval: '5m'
-                        });
-                    }
 
-                    if (!dailyData || !dailyData.quotes || !min5Data || !min5Data.quotes) {
-                        continue;
-                    }
+                        // Fetch 60 days 5m (Yahoo allows max 60 days for 5m, effectively 59 days to be safe)
+                        let min5Data;
+                        try {
+                            min5Data = await this.fetchChartWithRetry(querySymbol, {
+                                period1: this.getDaysAgoTimestamp(59), 
+                                interval: '5m'
+                            });
+                        } catch (e) {
+                            min5Data = await this.fetchChartWithRetry(querySymbol, {
+                                period1: this.getDaysAgoTimestamp(30), 
+                                interval: '5m'
+                            });
+                        }
 
-                    let high90d = -Infinity;
-                    let low90d = Infinity;
-                    let totalDailyVol = 0;
-                    let validDailyDays = 0;
+                        if (!dailyData || !dailyData.quotes || !min5Data || !min5Data.quotes) {
+                            throw new Error("Missing quotes data");
+                        }
 
-                    for (const quote of dailyData.quotes) {
-                        if (quote.high !== null && quote.high !== undefined) high90d = Math.max(high90d, quote.high);
-                        if (quote.low !== null && quote.low !== undefined) low90d = Math.min(low90d, quote.low);
-                        if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
-                            totalDailyVol += quote.volume;
-                            validDailyDays++;
+                        let high90d = -Infinity;
+                        let low90d = Infinity;
+                        let totalDailyVol = 0;
+                        let validDailyDays = 0;
+
+                        for (const quote of dailyData.quotes) {
+                            if (quote.high !== null && quote.high !== undefined) high90d = Math.max(high90d, quote.high);
+                            if (quote.low !== null && quote.low !== undefined) low90d = Math.min(low90d, quote.low);
+                            if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
+                                totalDailyVol += quote.volume;
+                                validDailyDays++;
+                            }
+                        }
+
+                        if (high90d === -Infinity || low90d === Infinity || validDailyDays === 0) throw new Error("Missing volume/price data");
+
+                        const avgDailyVol90d = totalDailyVol / validDailyDays;
+
+                        let total5mVol = 0;
+                        let valid5mPeriods = 0;
+                        for (let i = 0; i < min5Data.quotes.length; i++) {
+                            const quote = min5Data.quotes[i];
+                            if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
+                                total5mVol += quote.volume;
+                                valid5mPeriods++;
+                            }
+                        }
+
+                        if (valid5mPeriods === 0) throw new Error("Missing 5m volume data");
+                        const avg5mVol60d = total5mVol / valid5mPeriods;
+
+                        cached = {
+                            timestamp: now,
+                            high90d,
+                            low90d,
+                            avgDailyVol90d,
+                            avg5mVol60d
+                        };
+                        this.cache[stock.symbol] = cached;
+                    } catch (e: any) {
+                        console.warn(`[DataFetcher] Background lookup failed for ${stock.symbol}: ${e.message}`);
+                        // If we have stale cache, continue using it. Else, create a zeroed fallback.
+                        if (!cached) {
+                            cached = {
+                                timestamp: now - 59 * 60 * 1000, // force refresh sooner
+                                high90d: 0,
+                                low90d: 0,
+                                avgDailyVol90d: 0,
+                                avg5mVol60d: 0
+                            };
                         }
                     }
-
-                    if (high90d === -Infinity || low90d === Infinity || validDailyDays === 0) continue;
-
-                    const avgDailyVol90d = totalDailyVol / validDailyDays;
-
-                    let total5mVol = 0;
-                    let valid5mPeriods = 0;
-                    for (let i = 0; i < min5Data.quotes.length; i++) {
-                        const quote = min5Data.quotes[i];
-                        if (quote.volume !== null && quote.volume !== undefined && quote.volume > 0) {
-                            total5mVol += quote.volume;
-                            valid5mPeriods++;
-                        }
-                    }
-
-                    if (valid5mPeriods === 0) continue;
-                    const avg5mVol60d = total5mVol / valid5mPeriods;
-
-                    cached = {
-                        timestamp: now,
-                        high90d,
-                        low90d,
-                        avgDailyVol90d,
-                        avg5mVol60d
-                    };
-                    this.cache[stock.symbol] = cached;
                 }
 
                 // Fetch 1 min & 5 min recent data using 1-5 day buffer to account for weekends
                 let recent5Data;
                 let last5mVolume = 0;
                 try {
-                    recent5Data = await yahooFinance.chart(querySymbol, {
+                    recent5Data = await this.fetchChartWithRetry(querySymbol, {
                         period1: this.getDaysAgoTimestamp(5),
                         interval: '5m'
                     });
@@ -129,7 +154,7 @@ export class DataFetcher {
 
                 let min1Data;
                 try {
-                    min1Data = await yahooFinance.chart(querySymbol, {
+                    min1Data = await this.fetchChartWithRetry(querySymbol, {
                         period1: this.getDaysAgoTimestamp(2),
                         interval: '1m'
                     });

@@ -7,6 +7,7 @@ function App() {
   const [results, setResults] = useState<any[]>([]);
   const [buying, setBuying] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
 
   const generateReport = async (silent: boolean = false) => {
     if (!silent) {
@@ -35,14 +36,19 @@ function App() {
   useEffect(() => {
     // Initial fetch on mount
     generateReport(true);
-    
-    // Auto-refresh every 1 minute
-    const intervalId = setInterval(() => {
-        generateReport(true);
-    }, 60 * 1000);
-
-    return () => clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    let intervalId: any;
+    if (isScanning) {
+      intervalId = setInterval(() => {
+        generateReport(true);
+      }, 60 * 1000);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isScanning]);
 
   const downloadReport = () => {
     window.location.href = '/api/download-report';
@@ -114,9 +120,25 @@ function App() {
             </div>
             <div className="flex gap-2 mt-4 md:mt-0">
                 <button
+                    onClick={() => setIsScanning(!isScanning)}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all text-sm shadow-sm ${
+                      isScanning 
+                        ? 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100' 
+                        : 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
+                    }`}
+                >
+                    {isScanning ? 'Stop Auto-Scan' : 'Start Auto-Scan'}
+                </button>
+                <button
+                    onClick={downloadReport}
+                    className="px-4 py-2 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg font-medium hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:ring-offset-2 transition-all text-sm shadow-sm"
+                >
+                    Download Excel
+                </button>
+                <button
                     onClick={() => generateReport(false)}
                     disabled={loading}
-                    className="px-4 py-2 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:opacity-50 transition-all text-sm"
+                    className="px-4 py-2 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 disabled:opacity-50 transition-all text-sm shadow-sm"
                 >
                     {loading ? 'Refreshing...' : 'Refresh Now'}
                 </button>
