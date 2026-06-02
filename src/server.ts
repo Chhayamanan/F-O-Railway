@@ -50,8 +50,19 @@ async function startServer() {
 
   app.post("/api/nifty/check-breakout", async (req, res) => {
     try {
-      const status = await DataFetcher.fetchNiftyBreakoutStatus();
-      res.json({ success: true, metrics: status.metrics });
+      const { qty } = req.body;
+      const targetQuantity = qty || 25;
+      
+      const status = await DataFetcher.fetchNiftyBreakoutStatus(targetQuantity);
+  
+      if (status.orderParams) {
+          const client = await getMConnectClient();
+          if (typeof (client as any).placeOrder === 'function') {
+             await (client as any).placeOrder(status.orderParams);
+          }
+      }
+
+      res.json({ success: true, executedTrade: status.executedTrade, metrics: status.metrics });
     } catch (err: any) {
       console.error("[NIFTY BOT ERROR]", err.message);
       res.status(500).json({ success: false, error: err.message });

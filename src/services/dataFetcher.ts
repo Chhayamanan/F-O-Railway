@@ -1,5 +1,6 @@
 import * as YFModule from 'yahoo-finance2';
 import { DataKeeper } from '../core/dataKeeper';
+import { getMConnectClient, getActiveSessionToken } from './mStockService';
 
 let YFClass = YFModule.default || YFModule;
 if (typeof YFClass !== 'function' && typeof YFModule.default?.default === 'function') {
@@ -69,31 +70,85 @@ export class DataFetcher {
         return { executedAction, data: results };
     }
 
+    // Keep a lock to ensure only one trade per direction is executed today
+    private static tradedCE = false;
+    private static tradedPE = false;
+
     /**
      * PURE PRICE ACTION: Checks Nifty Index Spot against daily High/Low bounds
      */
-    public static async fetchNiftyBreakoutStatus(): Promise<{
-        metrics: { ltp: number; high: number; low: number }
+    public static async fetchNiftyBreakoutStatus(targetQty: number): Promise<{
+        metrics: { ltp: number; high: number; low: number };
+        executedTrade: string | null;
+        orderParams: any | null;
     }> {
-        // Fetch today's summary data directly from Yahoo Finance
-        const summary = await yahooFinance!.quote('^NSEI');
+        let executedTrade: string | null = null;
+        let orderParams: any | null = null;
+
+        const apiKey = process.env.MSTOCK_API_KEY || '';
+        const clientWrapper = await getMConnectClient();
+        const accessToken = (clientWrapper as any).getAccessToken ? (clientWrapper as any).getAccessToken() : getActiveSessionToken();
+
+        const response = await fetch('https://api.mstock.trade/openapi/typeb/instruments/quote', {
+            method: 'POST',
+            headers: {
+                'X-Mirae-Version': '1',
+                'Authorization': `Bearer ${accessToken}`,
+                'X-PrivateKey': apiKey,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                mode: "OHLC",
+                exchangeTokens: {
+                    "NSE": ["26000"]
+                }
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`mStock API Connection Error: Status Code ${response.status}`);
+        }
+
+        const json: any = await response.json();
+        
+        if (json.status !== "true" || !json.data?.fetched?.[0]) {
+            throw new Error(`mStock Data Error: ${json.message || "Empty payload response"}`);
+        }
+
+        const niftyData = json.data.fetched[0];
+        const ltp = Number(niftyData.ltp) || 0;
+        const high = Number(niftyData.high) || 0;
+        const low = Number(niftyData.low) || 0;
+
+        if (ltp > high && !this.tradedCE) {
+            executedTrade = "CALL OPTION (CE)";
+            this.tradedCE = true;
+            orderParams = this.buildPayload("CE", ltp, targetQty);
+        } else if (ltp < low && !this.tradedPE) {
+            executedTrade = "PUT OPTION (PE)";
+            this.tradedPE = true;
+            orderParams = this.buildPayload("PE", ltp, targetQty);
+        }
 
         return {
-            metrics: {
-                ltp: summary.regularMarketPrice || 0,
-                high: summary.regularMarketDayHigh || 0,
-                low: summary.regularMarketDayLow || 0
-            }
+            metrics: { ltp, high, low },
+            executedTrade,
+            orderParams
         };
     }
 
-    private static buildOptionsPayload(type: 'CE' | 'PE', spot: number, qty: number) {
+    private static buildPayload(type: 'CE' | 'PE', spot: number, qty: number) {
         const strike = Math.round(spot / 50) * 50;
-        const symbolString = `NIFTY26JUN${strike}${type}`;
         return {
-            variety: "NORMAL", tradingsymbol: symbolString, symboltoken: "1",
-            exchange: "NFO", transactiontype: "BUY", ordertype: "MARKET",
-            quantity: String(qty), producttype: "INTRADAY", duration: "DAY"
+            variety: "NORMAL",
+            tradingsymbol: `NIFTY26JUN${strike}${type}`,
+            symboltoken: "1",
+            exchange: "NFO",
+            transactiontype: "BUY",
+            ordertype: "MARKET",
+            quantity: String(qty),
+            producttype: "INTRADAY",
+            duration: "DAY"
         };
     }
 

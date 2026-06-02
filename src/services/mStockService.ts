@@ -92,3 +92,7 @@ export const placeOrder = async (symbol: string, token: string = "1", transactio
         throw new Error("Client structural fault: placeOrder method is missing on verified session profile.");
     }
 };
+
+export const getActiveSessionToken = (): string | null => {
+    return _token;
+};
