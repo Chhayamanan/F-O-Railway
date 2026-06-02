@@ -72,48 +72,18 @@ export class DataFetcher {
     /**
      * PURE PRICE ACTION: Checks Nifty Index Spot against daily High/Low bounds
      */
-    public static async fetchNiftyBreakoutStatus(targetQty: number): Promise<{
-        metrics: { ltp: number; high: number; low: number };
-        executedTrade: string | null;
-        orderParams: any | null;
+    public static async fetchNiftyBreakoutStatus(): Promise<{
+        metrics: { ltp: number; high: number; low: number }
     }> {
-        const querySymbol = '^NSEI';
-        let executedTrade: string | null = null;
-        let orderParams: any | null = null;
-
-        const intradayData = await yahooFinance!.chart(querySymbol, { period1: Math.floor(Date.now() / 1000) - 86400, interval: '1m' });
-        const quotes = intradayData?.quotes || [];
-        if (quotes.length === 0) throw new Error("No Nifty data feed");
-
-        const latestQuote = quotes[quotes.length - 1];
-        const spotPrice = latestQuote.close || latestQuote.open;
-        if (spotPrice === null) throw new Error("No Spot price");
-
-        if (this.niftySession.dailyHigh === -Infinity) {
-            quotes.forEach((q: any) => {
-                if (q.high) this.niftySession.dailyHigh = Math.max(this.niftySession.dailyHigh, q.high);
-                if (q.low) this.niftySession.dailyLow = Math.min(this.niftySession.dailyLow, q.low);
-            });
-        }
-
-        // Breakout Logic: Buy Call above High, Buy Put below Low
-        if (spotPrice > this.niftySession.dailyHigh && !this.niftySession.hasTradedCE) {
-            executedTrade = "CALL OPTION (CE)";
-            this.niftySession.hasTradedCE = true;
-            orderParams = this.buildOptionsPayload("CE", spotPrice, targetQty);
-        } else if (spotPrice < this.niftySession.dailyLow && !this.niftySession.hasTradedPE) {
-            executedTrade = "PUT OPTION (PE)";
-            this.niftySession.hasTradedPE = true;
-            orderParams = this.buildOptionsPayload("PE", spotPrice, targetQty);
-        }
-
-        if (spotPrice > this.niftySession.dailyHigh) this.niftySession.dailyHigh = spotPrice;
-        if (spotPrice < this.niftySession.dailyLow) this.niftySession.dailyLow = spotPrice;
+        // Fetch today's summary data directly from Yahoo Finance
+        const summary = await yahooFinance!.quote('^NSEI');
 
         return {
-            metrics: { ltp: spotPrice, high: this.niftySession.dailyHigh, low: this.niftySession.dailyLow },
-            executedTrade,
-            orderParams
+            metrics: {
+                ltp: summary.regularMarketPrice || 0,
+                high: summary.regularMarketDayHigh || 0,
+                low: summary.regularMarketDayLow || 0
+            }
         };
     }
 
