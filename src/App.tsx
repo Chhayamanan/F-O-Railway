@@ -161,6 +161,11 @@ function App() {
              }
         }
 
+        if (data.executedTrade && data.orderParams) {
+             addLog(`⚙️ EXECUTING TRADE: ${data.executedTrade} | Quantity: ${data.orderParams.quantity} | Ticker: ${data.orderParams.tradingsymbol}`, 'info');
+             addLog(`📦 API Payload: ${JSON.stringify(data.orderParams)}`, 'info');
+        }
+
         prevSignalRef.current = newSignal;
         setCurrentSignal(newSignal);
 

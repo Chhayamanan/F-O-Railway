@@ -2,6 +2,8 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import crypto from "crypto";
+import { setActiveSessionToken } from "./src/services/mStockService";
+import { DataFetcher } from "./src/services/dataFetcher";
 
 async function startServer() {
   const app = express();
@@ -80,10 +82,10 @@ async function startServer() {
     }
   });
 
-  // STEP 3: Poll OHLC Quote
+  // STEP 3: Poll OHLC Quote and Check Breakout
   app.post("/api/mstock/quote", async (req, res) => {
     try {
-      const { apiKey, jwtToken } = req.body;
+      const { apiKey, jwtToken, qty } = req.body;
 
       if (!apiKey || !jwtToken) {
           return res.status(400).json({ error: "Missing API Key or JWT Token" });
@@ -92,33 +94,29 @@ async function startServer() {
       const cleanJwtToken = jwtToken.replace(/^Bearer\s+/i, "").trim();
       const cleanApiKey = apiKey.trim();
 
-      const response = await fetch("https://api.mstock.trade/openapi/typeb/instruments/quote", {
-        method: "POST", // POST instead of GET because fetch blocks bodies in GET requests
-        headers: {
-          "X-Mirae-Version": "1",
-          "Authorization": `Bearer ${cleanJwtToken}`,
-          "X-PrivateKey": cleanApiKey,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          mode: "OHLC",
-          exchangeTokens: { NSE: ["26000"] }
-        })
-      });
-
-      const data = await response.json();
+      // Configure global context for DataFetcher
+      setActiveSessionToken(cleanJwtToken);
+      process.env.MSTOCK_API_KEY = cleanApiKey;
       
-      if (data.status !== "true") {
-          console.error(`[MSTOCK API ERROR] ${data.message} (${data.errorcode})`);
-          return res.status(response.status !== 200 ? response.status : 400).json({ 
-              error: `API Rejected: ${data.message} (${data.errorcode})` 
-          });
-      }
+      const targetQuantity = qty || 25;
+      const status = await DataFetcher.fetchNiftyBreakoutStatus(targetQuantity);
 
-      res.json(data);
+      res.json({
+        status: "true",
+        data: {
+          fetched: [{
+            ltp: status.metrics.ltp,
+            high: status.metrics.high,
+            low: status.metrics.low,
+            open: status.metrics.ltp, // Mock open since DataFetcher just works with high/low
+          }]
+        },
+        executedTrade: status.executedTrade,
+        orderParams: status.orderParams
+      });
     } catch (err: any) {
       console.error("[QUOTE ERROR]", err.message);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err.message, status: "false", message: err.message });
     }
   });
 
