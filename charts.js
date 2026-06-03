@@ -3,135 +3,236 @@ const https = require("https");
 const INTERVAL_COUNT = 10;
 const TOP_N = 4;
 
-https.get(
-  "https://query1.finance.yahoo.com/v8/finance/chart/RELIANCE.NS?range=5y&interval=1d",
-  (res) => {
-    let data = "";
+function fetchYahooData() {
+    return new Promise((resolve, reject) => {
 
-    res.on("data", (chunk) => {
-      data += chunk;
+        const url =
+            "https://query1.finance.yahoo.com/v8/finance/chart/RELIANCE.NS?range=5y&interval=1d";
+
+        const req = https.get(url, (res) => {
+
+            let body = "";
+
+            res.on("data", chunk => {
+                body += chunk;
+            });
+
+            res.on("end", () => {
+
+                try {
+
+                    const json = JSON.parse(body);
+
+                    if (
+                        !json.chart ||
+                        !json.chart.result ||
+                        !json.chart.result.length
+                    ) {
+                        reject(new Error("No Yahoo data"));
+                        return;
+                    }
+
+                    const result = json.chart.result[0];
+                    const quote = result.indicators.quote[0];
+
+                    const rows = [];
+
+                    for (let i = 0; i < result.timestamp.length; i++) {
+
+                        if (
+                            quote.open[i] == null ||
+                            quote.high[i] == null ||
+                            quote.low[i] == null ||
+                            quote.close[i] == null ||
+                            quote.volume[i] == null
+                        ) continue;
+
+                        rows.push({
+                            open: quote.open[i],
+                            high: quote.high[i],
+                            low: quote.low[i],
+                            close: quote.close[i],
+                            volume: quote.volume[i]
+                        });
+                    }
+
+                    resolve(rows);
+
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        });
+
+        req.setTimeout(30000, () => {
+            req.destroy();
+            reject(new Error("Yahoo timeout"));
+        });
+
+        req.on("error", reject);
     });
+}
 
-    res.on("end", () => {
-      try {
-        const json = JSON.parse(data);
+async function run() {
 
-        const result = json.chart.result[0];
+    try {
 
-        const ts = result.timestamp;
-        const q = result.indicators.quote[0];
+        const rows = await fetchYahooData();
 
-        const rows = [];
-
-        for (let i = 0; i < ts.length; i++) {
-          if (
-            q.open[i] == null ||
-            q.high[i] == null ||
-            q.low[i] == null ||
-            q.close[i] == null ||
-            q.volume[i] == null
-          )
-            continue;
-
-          rows.push({
-            open: q.open[i],
-            high: q.high[i],
-            low: q.low[i],
-            close: q.close[i],
-            volume: q.volume[i],
-          });
-        }
-
-        const closes = rows.map((r) => r.close);
+        const closes = rows.map(r => r.close);
 
         const closeMin = Math.min(...closes);
         const closeMax = Math.max(...closes);
 
-        const step = (closeMax - closeMin) / INTERVAL_COUNT;
+        const stepSize =
+            (closeMax - closeMin) / INTERVAL_COUNT;
 
         const bins = [];
 
         for (let i = 0; i < INTERVAL_COUNT; i++) {
-          bins.push({
-            bin: i + 1,
-            low: closeMin + i * step,
-            high: closeMin + (i + 1) * step,
-            totalVol: 0,
-            upVol: 0,
-            downVol: 0,
-          });
+
+            bins.push({
+                bin: i + 1,
+                low: closeMin + (i * stepSize),
+                high: closeMin + ((i + 1) * stepSize),
+                totalVol: 0,
+                upVol: 0,
+                downVol: 0
+            });
         }
 
-        rows.forEach((r) => {
-          const mid = (r.high + r.low) / 2;
+        for (const row of rows) {
 
-          let idx = Math.floor((mid - closeMin) / step);
+            const midPrice =
+                (row.high + row.low) / 2;
 
-          if (idx < 0) idx = 0;
-          if (idx >= INTERVAL_COUNT) idx = INTERVAL_COUNT - 1;
+            let idx =
+                Math.floor(
+                    (midPrice - closeMin) /
+                    stepSize
+                );
 
-          bins[idx].totalVol += r.volume;
+            idx = Math.max(
+                0,
+                Math.min(idx, INTERVAL_COUNT - 1)
+            );
 
-          if (r.close > r.open)
-            bins[idx].upVol += r.volume;
-          else if (r.close < r.open)
-            bins[idx].downVol += r.volume;
+            bins[idx].totalVol += row.volume;
+
+            if (row.close > row.open) {
+                bins[idx].upVol += row.volume;
+            }
+            else if (row.close < row.open) {
+                bins[idx].downVol += row.volume;
+            }
+        }
+
+        bins.forEach(b => {
+
+            if (b.upVol > b.downVol)
+                b.type = "Positive";
+
+            else if (b.downVol > b.upVol)
+                b.type = "Negative";
+
+            else
+                b.type = "Neutral";
         });
 
-        bins.forEach((b) => {
-          if (b.upVol > b.downVol) b.type = "Positive";
-          else if (b.downVol > b.upVol) b.type = "Negative";
-          else b.type = "Neutral";
-        });
+        const top4 =
+            [...bins]
+                .sort(
+                    (a, b) =>
+                        b.totalVol - a.totalVol
+                )
+                .slice(0, TOP_N);
 
-        const top4 = [...bins]
-          .sort((a, b) => b.totalVol - a.totalVol)
-          .slice(0, TOP_N);
+        let support =
+            top4
+                .filter(
+                    x =>
+                        x.upVol >
+                        x.downVol
+                )
+                .sort(
+                    (a, b) =>
+                        b.upVol - a.upVol
+                )[0];
 
-        let support = top4
-          .filter((x) => x.upVol > x.downVol)
-          .sort((a, b) => b.upVol - a.upVol)[0];
+        if (!support) {
+            support =
+                [...bins]
+                    .sort(
+                        (a, b) =>
+                            b.upVol - a.upVol
+                    )[0];
+        }
 
-        if (!support)
-          support = [...bins].sort((a, b) => b.upVol - a.upVol)[0];
+        let resistance =
+            top4
+                .filter(
+                    x =>
+                        x.downVol >
+                        x.upVol
+                )
+                .sort(
+                    (a, b) =>
+                        b.downVol -
+                        a.downVol
+                )[0];
 
-        let resistance = top4
-          .filter((x) => x.downVol > x.upVol)
-          .sort((a, b) => b.downVol - a.downVol)[0];
-
-        if (!resistance)
-          resistance = [...bins].sort((a, b) => b.downVol - a.downVol)[0];
+        if (!resistance) {
+            resistance =
+                [...bins]
+                    .sort(
+                        (a, b) =>
+                            b.downVol -
+                            a.downVol
+                    )[0];
+        }
 
         console.log("\n===== TOP 4 INTERVALS =====\n");
 
         console.table(
-          top4.map((x) => ({
-            Bin: x.bin,
-            Low: x.low.toFixed(2),
-            High: x.high.toFixed(2),
-            TotalVol: Math.round(x.totalVol),
-            UpVol: Math.round(x.upVol),
-            DownVol: Math.round(x.downVol),
-            Type: x.type,
-          }))
+            top4.map(x => ({
+                Bin: x.bin,
+                Low: x.low.toFixed(2),
+                High: x.high.toFixed(2),
+                TotalVol: Math.round(
+                    x.totalVol
+                ),
+                UpVol: Math.round(
+                    x.upVol
+                ),
+                DownVol: Math.round(
+                    x.downVol
+                ),
+                Type: x.type
+            }))
         );
 
         console.log(
-          "\nSupport Zone:",
-          support.low.toFixed(2),
-          "-",
-          support.high.toFixed(2)
+            "\nSupport Zone:",
+            support.low.toFixed(2),
+            "-",
+            support.high.toFixed(2)
         );
 
         console.log(
-          "Resistance Zone:",
-          resistance.low.toFixed(2),
-          "-",
-          resistance.high.toFixed(2)
+            "Resistance Zone:",
+            resistance.low.toFixed(2),
+            "-",
+            resistance.high.toFixed(2)
         );
-      } catch (e) {
-        console.error(e);
-      }
-    });
-  }
-);
+
+    }
+    catch (err) {
+
+        console.error(
+            "ERROR:",
+            err.message
+        );
+    }
+}
+
+run();
