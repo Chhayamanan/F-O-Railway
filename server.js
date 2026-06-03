@@ -67,7 +67,7 @@ const logFile = fs.createWriteStream("nifty_trader.log", { flags: "a" });
 function log(level, msg) {
   const line = `${new Date().toISOString()}  ${level.padEnd(7)}  ${msg}`;
   console.log(line);
-  logFile.write(line + "\\n");
+  logFile.write(line + "\n");
   state.logs.unshift({ t: new Date().toLocaleTimeString("en-IN"), level, msg });
   if (state.logs.length > 100) state.logs.pop();
 }
@@ -485,7 +485,7 @@ refresh();
 setInterval(refresh, 5000);
 </script>
 </body>
-</html>\`;
+</html>`;
 }
 
 // ─────────────────────────────────────────────
@@ -502,7 +502,7 @@ function startDashboard() {
     }
   });
   server.listen(CONFIG.dashPort, () => {
-    info(`Dashboard running → http://localhost:${CONFIG.dashPort}`);
+    info("Dashboard running at http://localhost:" + CONFIG.dashPort);
   });
 }
 
