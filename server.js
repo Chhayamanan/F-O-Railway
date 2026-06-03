@@ -12,7 +12,7 @@ const http    = require("http");
 const fs      = require("fs");
 const { authenticator } = require("otplib");
 const YahooFinance = require("yahoo-finance2").default;
-const yahooFinance = new YahooFinance();
+const yahooFinance = new YahooFinance({ suppressNotices: ['ripHistorical'] });
 
 // ─────────────────────────────────────────────
 // CONFIGURATION
