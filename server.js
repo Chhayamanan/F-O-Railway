@@ -1,10 +1,10 @@
 "use strict";
 
 /**
- * mStock Nifty Breakout Trading Bot + Live Dashboard
+ * mStock Indices Breakout Trading Bot + Live Dashboard
  * ===================================================
- * - Trades: login → track Nifty OHLC → buy CE/PE on breakout
- * - Dashboard: HTTP server on PORT (default 3000) showing live tickers
+ * - Trades: login → track OHLC for Nifty, BankNifty, Sensex → buy CE/PE on breakout
+ * - Dashboard: HTTP server on PORT showing live tickers
  */
 
 const https   = require("https");
@@ -21,20 +21,38 @@ const CONFIG = {
   apiKey:         "pznEP6Gnv3kRsradk+fCeAw3/Q4Fx2quQg3hEl4q2BA=",
   totpSecret:     "I2QG4TGM6HZ5ZGG23OED33A3HZSS3J2B",   // set "" to use OTP SMS
 
-  niftyToken:     "26000",
-  niftyExchange:  "NSE",
-
-  optionExchange: "NFO",
-  optionLotSize:  25,
-  optionLots:     1,
-  optionProduct:  "CARRYFORWARD",
-  strikeOffset:   100,
-
   pollIntervalMs: 30_000,
   marketOpenH:  9,  marketOpenM:  15,
   marketCloseH: 15, marketCloseM: 30,
 
   dashPort: process.env.PORT || 3000,
+  
+  indices: {
+    NIFTY: {
+      token: "26000",
+      exchange: "NSE",
+      optExchange: "NFO",
+      strikeOffset: 50,
+      lotSize: 25,
+      lots: 1
+    },
+    BANKNIFTY: {
+      token: "26009",
+      exchange: "NSE",
+      optExchange: "NFO",
+      strikeOffset: 100,
+      lotSize: 15,
+      lots: 1
+    },
+    SENSEX: {
+      token: "1", // SENSEX BSE Token might be "1" or "999901" depending on broker mappings
+      exchange: "BSE",
+      optExchange: "BFO",
+      strikeOffset: 100,
+      lotSize: 10,
+      lots: 1
+    }
+  }
 };
 
 const BASE = "https://api.mstock.trade/openapi/typeb";
@@ -43,27 +61,24 @@ const BASE = "https://api.mstock.trade/openapi/typeb";
 // STATE  (shared between trading loop + dashboard)
 // ─────────────────────────────────────────────
 let jwtToken    = "";
-let orderPlaced = "";
 let scripMaster = null;
-let dayHigh     = null;
-let dayLow      = null;
 
 const state = {
-  ltp: null, open: null, high: null, low: null, close: null,
-  chgAbs: null, chgPct: null,
-  dayHigh: null, dayLow: null,
-  signal: "watching",   // "watching" | "CALL" | "PUT"
   lastUpdate: null,
   logs: [],
   balance: null,
-  orderPlaced: "",
+  marketOpen: false,
+  indices: {
+    NIFTY:     { ltp: null, open: null, high: null, low: null, close: null, chgAbs: null, chgPct: null, dayHigh: null, dayLow: null, signal: "watching", orderPlaced: "" },
+    BANKNIFTY: { ltp: null, open: null, high: null, low: null, close: null, chgAbs: null, chgPct: null, dayHigh: null, dayLow: null, signal: "watching", orderPlaced: "" },
+    SENSEX:    { ltp: null, open: null, high: null, low: null, close: null, chgAbs: null, chgPct: null, dayHigh: null, dayLow: null, signal: "watching", orderPlaced: "" },
+  }
 };
 
 // ─────────────────────────────────────────────
 // TIME HELPER (IST)
 // ─────────────────────────────────────────────
 function getISTDate() {
-  // Convert current system time to Indian Standard Time explicitly
   return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
 }
 
@@ -169,18 +184,24 @@ function promptUser(q) {
 }
 
 // ─────────────────────────────────────────────
-// NIFTY OHLC
+// FETCH OHLC
 // ─────────────────────────────────────────────
-async function getNiftyOhlc() {
+async function getIndicesOhlc() {
+  const exchangeTokens = {};
+  for (const [key, cfg] of Object.entries(CONFIG.indices)) {
+    if (!exchangeTokens[cfg.exchange]) exchangeTokens[cfg.exchange] = [];
+    exchangeTokens[cfg.exchange].push(cfg.token);
+  }
+  
   const data = await apiCall("GET", "/instruments/quote", {
     mode: "OHLC",
-    exchangeTokens: { [CONFIG.niftyExchange]: [CONFIG.niftyToken] },
+    exchangeTokens,
   });
   if (String(data.status).toLowerCase() !== "true")
     throw new Error("OHLC error: " + data.message);
   const fetched = data.data.fetched;
   if (!fetched || !fetched.length) throw new Error("OHLC: empty fetched");
-  return fetched[0];
+  return fetched;
 }
 
 // ─────────────────────────────────────────────
@@ -196,44 +217,47 @@ async function getScripMaster() {
   return scripMaster;
 }
 
-async function findNiftyOption(optionType, spot) {
-  const strike = Math.round(spot / CONFIG.strikeOffset) * CONFIG.strikeOffset;
+async function findOption(indexKey, optionType, spot) {
+  const cfg = CONFIG.indices[indexKey];
+  const strike = Math.round(spot / cfg.strikeOffset) * cfg.strikeOffset;
   const instruments = await getScripMaster();
   const today = getISTDate(); today.setHours(0, 0, 0, 0);
   const candidates = [];
+  
   for (const inst of instruments) {
-    if (inst.exch_seg === "NFO" && inst.instrumenttype === "OPTIDX" &&
-        inst.name && inst.name.toUpperCase().includes("NIFTY") &&
+    if (inst.exch_seg === cfg.optExchange && inst.instrumenttype === "OPTIDX" &&
+        inst.name && inst.name.toUpperCase().includes(indexKey) &&
         inst.symbol && inst.symbol.toUpperCase() === optionType) {
       const expDate = new Date(inst.expiry);
       if (isNaN(expDate) || expDate < today) continue;
       candidates.push({ diff: Math.abs(parseFloat(inst.strike || 0) - strike), expDate, inst });
     }
   }
-  if (!candidates.length) throw new Error(`No ${optionType} option near strike ${strike}`);
+  if (!candidates.length) throw new Error(`No ${optionType} option near strike ${strike} for ${indexKey}`);
   candidates.sort((a, b) => a.diff - b.diff || a.expDate - b.expDate);
   const best = candidates[0].inst;
-  info(`Selected: ${best.name} | strike=${best.strike} | expiry=${best.expiry}`);
+  info(`Selected ${indexKey}: ${best.name} | strike=${best.strike} | expiry=${best.expiry}`);
   return best;
 }
 
 // ─────────────────────────────────────────────
 // ORDER
 // ─────────────────────────────────────────────
-async function placeOrder(instrument, optionType) {
-  const qty = CONFIG.optionLotSize * CONFIG.optionLots;
-  info(`Placing ${optionType} order: ${instrument.name} x${qty}`);
+async function placeOrder(indexKey, instrument, optionType) {
+  const cfg = CONFIG.indices[indexKey];
+  const qty = cfg.lotSize * cfg.lots;
+  info(`Placing ${optionType} order for ${indexKey}: ${instrument.name} x${qty}`);
   const data = await apiCall("POST", "/orders/regular", {
     variety: "NORMAL", tradingsymbol: instrument.name, symboltoken: instrument.token,
-    exchange: CONFIG.optionExchange, transactiontype: "BUY", ordertype: "MARKET",
-    quantity: String(qty), producttype: CONFIG.optionProduct,
+    exchange: cfg.optExchange, transactiontype: "BUY", ordertype: "MARKET",
+    quantity: String(qty), producttype: "CARRYFORWARD",
     price: "0", triggerprice: "0", squareoff: "0", stoploss: "0",
     trailingStopLoss: "", disclosedquantity: "", duration: "DAY",
-    ordertag: `nifty_${optionType.toLowerCase()}`,
+    ordertag: `${indexKey.toLowerCase()}_${optionType.toLowerCase()}`,
   });
   if (String(data.status).toLowerCase() !== "true")
-    throw new Error("Order failed: " + data.message);
-  info(`Order placed! ID: ${data.data.orderid}`);
+    throw new Error(`${indexKey} Order failed: ` + data.message);
+  info(`${indexKey} Order placed! ID: ${data.data.orderid}`);
   return data.data.orderid;
 }
 
@@ -253,7 +277,7 @@ function isMarketOpen() {
 // ─────────────────────────────────────────────
 async function tradingLoop() {
   info("=".repeat(55));
-  info("  mStock Nifty Breakout Bot started");
+  info("  mStock Breakout Bot started (Nifty, BankNifty, Sensex)");
   info(`  Dashboard: http://localhost:${CONFIG.dashPort}`);
   info("=".repeat(55));
 
@@ -263,50 +287,69 @@ async function tradingLoop() {
         const now = getISTDate();
         const afterClose = now.getHours() * 60 + now.getMinutes() >
                            CONFIG.marketCloseH * 60 + CONFIG.marketCloseM;
-        if (afterClose) { orderPlaced = ""; dayHigh = null; dayLow = null; state.signal = "watching"; }
+        if (afterClose) { 
+          // Reset all indices state
+          for (const key of Object.keys(state.indices)) {
+            state.indices[key].orderPlaced = "";
+            state.indices[key].dayHigh = null;
+            state.indices[key].dayLow = null;
+            state.indices[key].signal = "watching";
+          }
+        }
+        state.marketOpen = false;
         await sleep(60_000);
         continue;
       }
+      
+      state.marketOpen = true;
+      const fetchedOhlc = await getIndicesOhlc();
 
-      const ohlc = await getNiftyOhlc();
-      const ltp  = parseFloat(ohlc.ltp);
-      const high = parseFloat(ohlc.high);
-      const low  = parseFloat(ohlc.low);
-      const cls  = parseFloat(ohlc.close);
+      for (const [indexKey, cfg] of Object.entries(CONFIG.indices)) {
+        // Find matching OHLC data
+        const ohlc = fetchedOhlc.find(item => item.token === cfg.token);
+        if (!ohlc) continue;
 
-      // 1. Check breakout against the High/Low from the PAST 30-second refresh
-      if (dayHigh !== null && dayLow !== null) {
-        if (ltp > dayHigh && orderPlaced !== "CALL") {
-          info(`BREAKOUT: LTP (${ltp.toFixed(2)}) broke past 30s High (${dayHigh.toFixed(2)}) — Buying CALL`);
-          const inst = await findNiftyOption("CE", ltp);
-          await placeOrder(inst, "CALL");
-          orderPlaced = "CALL"; state.signal = "CALL"; state.orderPlaced = "CALL";
-        } else if (ltp < dayLow && orderPlaced !== "PUT") {
-          info(`BREAKDOWN: LTP (${ltp.toFixed(2)}) broke past 30s Low (${dayLow.toFixed(2)}) — Buying PUT`);
-          const inst = await findNiftyOption("PE", ltp);
-          await placeOrder(inst, "PUT");
-          orderPlaced = "PUT"; state.signal = "PUT"; state.orderPlaced = "PUT";
-        } else if (!orderPlaced) {
-          state.signal = "watching";
+        const ltp  = parseFloat(ohlc.ltp);
+        const high = parseFloat(ohlc.high);
+        const low  = parseFloat(ohlc.low);
+        const cls  = parseFloat(ohlc.close);
+        
+        let indState = state.indices[indexKey];
+
+        // 1. Check breakout against the High/Low from the PAST 30-second refresh
+        if (indState.dayHigh !== null && indState.dayLow !== null) {
+          if (ltp > indState.dayHigh && indState.orderPlaced !== "CALL") {
+            info(`[${indexKey}] BREAKOUT: LTP (${ltp.toFixed(2)}) broke past 30s High (${indState.dayHigh.toFixed(2)}) — Buying CALL`);
+            const inst = await findOption(indexKey, "CE", ltp);
+            await placeOrder(indexKey, inst, "CALL");
+            indState.orderPlaced = "CALL"; indState.signal = "CALL";
+          } else if (ltp < indState.dayLow && indState.orderPlaced !== "PUT") {
+            info(`[${indexKey}] BREAKDOWN: LTP (${ltp.toFixed(2)}) broke past 30s Low (${indState.dayLow.toFixed(2)}) — Buying PUT`);
+            const inst = await findOption(indexKey, "PE", ltp);
+            await placeOrder(indexKey, inst, "PUT");
+            indState.orderPlaced = "PUT"; indState.signal = "PUT";
+          } else if (!indState.orderPlaced) {
+            indState.signal = "watching";
+          }
         }
+
+        // 2. Update current High/Low reference for the next cycle
+        if (indState.dayHigh === null) { 
+          indState.dayHigh = high; 
+          indState.dayLow = low; 
+        } else {
+          indState.dayHigh = Math.max(indState.dayHigh, high);
+          indState.dayLow  = Math.min(indState.dayLow,  low);
+        }
+
+        // 3. update shared state for dashboard
+        Object.assign(indState, {
+          ltp, open: parseFloat(ohlc.open), high, low, close: cls,
+          chgAbs: ltp - cls, chgPct: ((ltp - cls) / cls) * 100,
+        });
       }
-
-      // 2. Update current High/Low reference for the next cycle
-      if (dayHigh === null) { dayHigh = high; dayLow = low; }
-      else {
-        dayHigh = Math.max(dayHigh, high);
-        dayLow  = Math.min(dayLow,  low);
-      }
-
-      // 3. update shared state for dashboard
-      Object.assign(state, {
-        ltp, open: parseFloat(ohlc.open), high, low, close: cls,
-        chgAbs: ltp - cls, chgPct: ((ltp - cls) / cls) * 100,
-        dayHigh, dayLow, lastUpdate: getISTDate().toLocaleTimeString("en-US", { hour12: false }),
-        orderPlaced,
-      });
-
-      info(`LTP: ${ltp.toFixed(2)}  High: ${dayHigh.toFixed(2)}  Low: ${dayLow.toFixed(2)}  Order: ${orderPlaced || "None"}`);
+      
+      state.lastUpdate = getISTDate().toLocaleTimeString("en-US", { hour12: false });
 
     } catch (err) {
       error("Error: " + err.message);
@@ -330,7 +373,7 @@ function dashboardHTML() {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nifty Breakout Bot</title>
+<title>Breakout Bot Dashboard</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f0f;color:#e0e0e0;min-height:100vh}
@@ -339,19 +382,31 @@ function dashboardHTML() {
   .dot{width:8px;height:8px;border-radius:50%;background:#4ade80;display:inline-block;margin-right:6px;animation:pulse 1.5s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
   .status{font-size:12px;color:#888}
-  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:20px 24px}
-  .card{background:#161616;border:1px solid #2a2a2a;border-radius:10px;padding:16px}
+  
+  .indices-wrapper { display: flex; flex-direction: column; gap: 20px; padding: 20px 24px; }
+  
+  .index-panel { background:#161616; border:1px solid #2a2a2a; border-radius:12px; padding: 20px; }
+  .panel-header { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+  
+  .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;}
+  @media(max-width:1000px){.grid{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:600px){.grid{grid-template-columns:1fr}}
+  
+  .card{background:#111; border:1px solid #222; border-radius:8px; padding:16px}
   .card-label{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px}
-  .card-value{font-size:26px;font-weight:600;letter-spacing:-0.03em;color:#fff}
+  .card-value{font-size:22px;font-weight:600;letter-spacing:-0.03em;color:#fff}
   .card-sub{font-size:12px;margin-top:4px;color:#888}
+  
   .up{color:#4ade80}.down{color:#f87171}.neutral{color:#888}
-  .bar-section{padding:0 24px 16px}
+  
+  .bar-section{margin-top: 16px; padding: 12px 16px; background:#111; border-radius:8px; border:1px solid #222}
   .bar-labels{display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:8px}
-  .bar-track{position:relative;height:12px;background:#1e1e1e;border-radius:99px;overflow:visible}
+  .bar-track{position:relative;height:8px;background:#1e1e1e;border-radius:99px;overflow:visible}
   .bar-low{position:absolute;left:0;top:0;height:100%;background:#f87171;border-radius:99px 0 0 99px;transition:width .5s}
   .bar-high{position:absolute;right:0;top:0;height:100%;background:#4ade80;border-radius:0 99px 99px 0;transition:width .5s}
-  .needle{position:absolute;top:-5px;width:3px;height:22px;background:#fff;border-radius:2px;transform:translateX(-50%);transition:left .5s}
-  .signal{margin:0 24px 16px;padding:14px 18px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:14px;font-weight:500;border:1px solid}
+  .needle{position:absolute;top:-4px;width:3px;height:16px;background:#fff;border-radius:2px;transform:translateX(-50%);transition:left .5s}
+  
+  .signal{margin-top: 16px; padding:12px 16px; border-radius:8px; display:flex; align-items:center; gap:12px; font-size:13px; font-weight:500; border:1px solid}
   .sig-watch{background:#1a1a1a;border-color:#2a2a2a;color:#888}
   .sig-call{background:#052e16;border-color:#166534;color:#4ade80}
   .sig-put{background:#2d0a0a;border-color:#7f1d1d;color:#f87171}
@@ -359,84 +414,123 @@ function dashboardHTML() {
   .badge-watch{background:#2a2a2a;color:#666}
   .badge-call{background:#166534;color:#4ade80}
   .badge-put{background:#7f1d1d;color:#f87171}
+  
   .log-section{margin:0 24px 24px}
-  .log-title{font-size:11px;color:#555;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px}
-  .log-box{background:#0a0a0a;border:1px solid #1e1e1e;border-radius:8px;padding:12px;height:200px;overflow-y:auto;font-family:'SF Mono','Fira Code',monospace;font-size:12px}
+  .log-title{font-size:11px;color:#555;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px; display:flex; justify-content:space-between}
+  .log-box{background:#0a0a0a;border:1px solid #1e1e1e;border-radius:8px;padding:12px;height:250px;overflow-y:auto;font-family:'SF Mono','Fira Code',monospace;font-size:12px}
   .log-entry{padding:2px 0;border-bottom:1px solid #141414;display:flex;gap:8px}
   .log-t{color:#444;min-width:70px}
   .log-INFO{color:#60a5fa}.log-WARN{color:#fbbf24}.log-ERROR{color:#f87171}
   .footer{padding:10px 24px;font-size:11px;color:#444;display:flex;justify-content:space-between}
-  @media(max-width:600px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header>
-  <h1><span class="dot"></span>Nifty Breakout Bot</h1>
+  <h1><span class="dot"></span>Multi-Index Breakout Bot</h1>
   <span class="status" id="mkt-status">Loading…</span>
 </header>
 
-<div class="grid">
-  <div class="card">
-    <div class="card-label">Current LTP</div>
-    <div class="card-value" id="ltp">—</div>
-    <div class="card-sub" id="ltp-chg">—</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Day High</div>
-    <div class="card-value up" id="d-high">—</div>
-    <div class="card-sub" id="high-gap">—</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Day Low</div>
-    <div class="card-value down" id="d-low">—</div>
-    <div class="card-sub" id="low-gap">—</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Open</div>
-    <div class="card-value" id="d-open">—</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Prev Close</div>
-    <div class="card-value" id="d-close">—</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Order placed</div>
-    <div class="card-value" id="d-order">—</div>
-    <div class="card-sub" id="d-balance">—</div>
-  </div>
-</div>
-
-<div class="bar-section">
-  <div class="bar-labels">
-    <span id="bl-low">Low: —</span>
-    <span style="color:#555">price within day range</span>
-    <span id="bl-high">High: —</span>
-  </div>
-  <div class="bar-track">
-    <div class="bar-low"  id="bar-l" style="width:40%"></div>
-    <div class="bar-high" id="bar-h" style="width:40%"></div>
-    <div class="needle"   id="needle" style="left:50%"></div>
-  </div>
-</div>
-
-<div class="signal sig-watch" id="signal">
-  <span id="sig-txt">Waiting for breakout…</span>
-  <span class="badge badge-watch" id="sig-badge">Watching</span>
+<div class="indices-wrapper" id="indices-container">
+  <!-- Rendered via JS -->
 </div>
 
 <div class="log-section">
-  <div class="log-title">Bot log</div>
+  <div class="log-title">
+    <span>Bot Log (Cross-Index)</span>
+    <span id="d-balance">Balance: -</span>
+  </div>
   <div class="log-box" id="log-box"></div>
 </div>
 
 <div class="footer">
-  <span>Auto-refreshes every 5s</span>
+  <span>Auto-refreshes periodically</span>
   <span id="last-upd">—</span>
 </div>
+
+<template id="index-template">
+  <div class="index-panel">
+    <div class="panel-header">
+      <span class="idx-name">NAME</span>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="card-label">Current LTP</div>
+        <div class="card-value idx-ltp">—</div>
+        <div class="card-sub idx-ltp-chg">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Past 30s High</div>
+        <div class="card-value up idx-high">—</div>
+        <div class="card-sub idx-high-gap">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Past 30s Low</div>
+        <div class="card-value down idx-low">—</div>
+        <div class="card-sub idx-low-gap">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Session Open</div>
+        <div class="card-value idx-open">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Order Status</div>
+        <div class="card-value idx-order">—</div>
+      </div>
+    </div>
+
+    <div class="bar-section">
+      <div class="bar-labels">
+        <span class="idx-bl-low">Low: —</span>
+        <span style="color:#555">range visualizer</span>
+        <span class="idx-bl-high">High: —</span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-low idx-bar-l" style="width:40%"></div>
+        <div class="bar-high idx-bar-h" style="width:40%"></div>
+        <div class="needle idx-needle" style="left:50%"></div>
+      </div>
+    </div>
+
+    <div class="signal sig-watch idx-signal-box">
+      <span class="idx-sig-txt">Waiting for breakout…</span>
+      <span class="badge badge-watch idx-sig-badge">Watching</span>
+    </div>
+  </div>
+</template>
 
 <script>
 const fmt = n => Number(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const pct  = n => (n>=0?'+':'')+n.toFixed(2)+'%';
+
+const container = document.getElementById('indices-container');
+const tmpl = document.getElementById('index-template').content;
+const uiNodes = {};
+
+// Create nodes for each index exactly once
+['NIFTY', 'BANKNIFTY', 'SENSEX'].forEach(key => {
+  const clone = document.importNode(tmpl, true);
+  clone.querySelector('.idx-name').textContent = key;
+  uiNodes[key] = {
+    root: clone.querySelector('.index-panel'),
+    ltp: clone.querySelector('.idx-ltp'),
+    ltpchg: clone.querySelector('.idx-ltp-chg'),
+    high: clone.querySelector('.idx-high'),
+    low: clone.querySelector('.idx-low'),
+    highgap: clone.querySelector('.idx-high-gap'),
+    lowgap: clone.querySelector('.idx-low-gap'),
+    open: clone.querySelector('.idx-open'),
+    order: clone.querySelector('.idx-order'),
+    bllow: clone.querySelector('.idx-bl-low'),
+    blhigh: clone.querySelector('.idx-bl-high'),
+    barl: clone.querySelector('.idx-bar-l'),
+    barh: clone.querySelector('.idx-bar-h'),
+    needle: clone.querySelector('.idx-needle'),
+    sigbox: clone.querySelector('.idx-signal-box'),
+    sigtxt: clone.querySelector('.idx-sig-txt'),
+    sigbadge: clone.querySelector('.idx-sig-badge'),
+  };
+  container.appendChild(clone);
+});
 
 async function refresh() {
   try {
@@ -444,50 +538,47 @@ async function refresh() {
     const s = await r.json();
 
     document.getElementById('mkt-status').textContent = s.marketOpen ? 'Market open' : 'Market closed';
-
-    if (s.ltp !== null) {
-      document.getElementById('ltp').textContent    = fmt(s.ltp);
-      const chgEl = document.getElementById('ltp-chg');
-      chgEl.textContent = (s.chgAbs>=0?'▲ +':'▼ ')+fmt(Math.abs(s.chgAbs))+'  ('+pct(s.chgPct)+')';
-      chgEl.className   = 'card-sub '+(s.chgAbs>=0?'up':'down');
-    }
-
-    if (s.dayHigh) {
-      document.getElementById('d-high').textContent  = fmt(s.dayHigh);
-      document.getElementById('d-low').textContent   = fmt(s.dayLow);
-      document.getElementById('high-gap').textContent = 'Gap: '+fmt(s.dayHigh - s.ltp)+' pts';
-      document.getElementById('low-gap').textContent  = 'Gap: '+fmt(s.ltp - s.dayLow)+' pts';
-      document.getElementById('bl-low').textContent   = 'Low: '+fmt(s.dayLow);
-      document.getElementById('bl-high').textContent  = 'High: '+fmt(s.dayHigh);
-
-      const range = s.dayHigh - s.dayLow || 1;
-      const pos   = Math.min(Math.max((s.ltp - s.dayLow) / range, 0), 1);
-      document.getElementById('bar-l').style.width  = (pos*40).toFixed(1)+'%';
-      document.getElementById('bar-h').style.width  = ((1-pos)*40).toFixed(1)+'%';
-      document.getElementById('needle').style.left  = (pos*100).toFixed(1)+'%';
-    }
-
-    if (s.open)  document.getElementById('d-open').textContent  = fmt(s.open);
-    if (s.close) document.getElementById('d-close').textContent = fmt(s.close);
-
-    const ordEl = document.getElementById('d-order');
-    ordEl.textContent = s.orderPlaced || 'None';
-    ordEl.className   = 'card-value '+(s.orderPlaced==='CALL'?'up':s.orderPlaced==='PUT'?'down':'neutral');
     if (s.balance) document.getElementById('d-balance').textContent = 'Balance: Rs. '+fmt(s.balance);
 
-    const sb = document.getElementById('signal');
-    const st = document.getElementById('sig-txt');
-    const bd = document.getElementById('sig-badge');
-    if (s.signal === 'CALL') {
-      sb.className='signal sig-call'; bd.className='badge badge-call'; bd.textContent='BUY CALL';
-      st.textContent='Price broke above past 30s high — CALL order placed';
-    } else if (s.signal === 'PUT') {
-      sb.className='signal sig-put'; bd.className='badge badge-put'; bd.textContent='BUY PUT';
-      st.textContent='Price broke below past 30s low — PUT order placed';
-    } else {
-      sb.className='signal sig-watch'; bd.className='badge badge-watch'; bd.textContent='Watching';
-      st.textContent='Price within day range — watching for breakout…';
-    }
+    Object.keys(s.indices).forEach(key => {
+      const idx = s.indices[key];
+      const ui = uiNodes[key];
+      if(!ui || idx.ltp === null) return;
+
+      ui.ltp.textContent = fmt(idx.ltp);
+      ui.ltpchg.textContent = (idx.chgAbs>=0?'▲ +':'▼ ')+fmt(Math.abs(idx.chgAbs))+'  ('+pct(idx.chgPct)+')';
+      ui.ltpchg.className = 'card-sub '+(idx.chgAbs>=0?'up':'down');
+
+      if (idx.dayHigh) {
+        ui.high.textContent = fmt(idx.dayHigh);
+        ui.low.textContent = fmt(idx.dayLow);
+        ui.highgap.textContent = 'Gap: '+fmt(idx.dayHigh - idx.ltp)+' pts';
+        ui.lowgap.textContent = 'Gap: '+fmt(idx.ltp - idx.dayLow)+' pts';
+        ui.bllow.textContent = 'Low: '+fmt(idx.dayLow);
+        ui.blhigh.textContent = 'High: '+fmt(idx.dayHigh);
+
+        const range = idx.dayHigh - idx.dayLow || 1;
+        const pos = Math.min(Math.max((idx.ltp - idx.dayLow) / range, 0), 1);
+        ui.barl.style.width = (pos*40).toFixed(1)+'%';
+        ui.barh.style.width = ((1-pos)*40).toFixed(1)+'%';
+        ui.needle.style.left = (pos*100).toFixed(1)+'%';
+      }
+
+      ui.open.textContent = fmt(idx.open);
+      ui.order.textContent = idx.orderPlaced || 'None';
+      ui.order.className = 'card-value '+(idx.orderPlaced==='CALL'?'up':idx.orderPlaced==='PUT'?'down':'neutral');
+
+      if (idx.signal === 'CALL') {
+        ui.sigbox.className='signal sig-call'; ui.sigbadge.className='badge badge-call'; ui.sigbadge.textContent='BUY CALL';
+        ui.sigtxt.textContent='Price broke past 30s high — CALL order placed';
+      } else if (idx.signal === 'PUT') {
+        ui.sigbox.className='signal sig-put'; ui.sigbadge.className='badge badge-put'; ui.sigbadge.textContent='BUY PUT';
+        ui.sigtxt.textContent='Price broke past 30s low — PUT order placed';
+      } else {
+        ui.sigbox.className='signal sig-watch'; ui.sigbadge.className='badge badge-watch'; ui.sigbadge.textContent='Watching';
+        ui.sigtxt.textContent='Watching past 30s high/low boundary for breakout…';
+      }
+    });
 
     const box = document.getElementById('log-box');
     box.innerHTML = s.logs.map(l =>
