@@ -1,13 +1,12 @@
 {
-  "name": "nifty-python-bot",
-  "private": true,
+  "name": "nifty-node-bot",
   "version": "0.0.0",
+  "description": "mStock Nifty Breakout Trading Bot",
+  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
-    "build": "echo 'Build complete'"
+    "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.21.0"
+    "otplib": "^12.0.1"
   }
 }
