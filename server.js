@@ -11,6 +11,7 @@ const https   = require("https");
 const http    = require("http");
 const fs      = require("fs");
 const { authenticator } = require("otplib");
+const yahooFinance = require("yahoo-finance2").default;
 
 // ─────────────────────────────────────────────
 // CONFIGURATION
@@ -422,6 +423,16 @@ function dashboardHTML() {
   .log-t{color:#444;min-width:70px}
   .log-INFO{color:#60a5fa}.log-WARN{color:#fbbf24}.log-ERROR{color:#f87171}
   .footer{padding:10px 24px;font-size:11px;color:#444;display:flex;justify-content:space-between}
+  
+  /* Tabs & Charts */
+  .tabs{display:flex; gap:16px; margin: 0 24px; border-bottom:1px solid #2a2a2a;}
+  .tab{padding:12px 16px; cursor:pointer; font-weight:600; color:#888; border-bottom:2px solid transparent;}
+  .tab.active{color:#fff; border-bottom-color:#4ade80;}
+  .tab-content{display:none;}
+  .tab-content.active{display:block;}
+  .chart-grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; padding:20px 24px;}
+  @media(max-width:1000px){.chart-grid{grid-template-columns:1fr;}}
+  .chart-card{background:#161616; border:1px solid #2a2a2a; border-radius:12px; padding:0; overflow:hidden;}
 </style>
 </head>
 <body>
@@ -430,16 +441,32 @@ function dashboardHTML() {
   <span class="status" id="mkt-status">Loading…</span>
 </header>
 
-<div class="indices-wrapper" id="indices-container">
-  <!-- Rendered via JS -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('bot')">Live Bot</div>
+  <div class="tab" onclick="switchTab('charts')">10-Yr S/R Analysis</div>
 </div>
 
-<div class="log-section">
-  <div class="log-title">
-    <span>Bot Log (Cross-Index)</span>
-    <span id="d-balance">Balance: -</span>
+<div id="tab-bot" class="tab-content active">
+  <div class="indices-wrapper" id="indices-container">
+    <!-- Rendered via JS -->
   </div>
-  <div class="log-box" id="log-box"></div>
+
+  <div class="log-section">
+    <div class="log-title">
+      <span>Bot Log (Cross-Index)</span>
+      <span id="d-balance">Balance: -</span>
+    </div>
+    <div class="log-box" id="log-box"></div>
+  </div>
+</div>
+
+<div id="tab-charts" class="tab-content">
+  <div style="padding: 20px 24px; color:#aaa; font-size:13px; line-height: 1.5;">
+     <strong>Python Strategy Integration:</strong> Processing 10-year Yahoo Finance optimization matrices for Top 4 Volume Distribution Blocks to compute Support & Resistance zones.
+  </div>
+  <div class="chart-grid" id="charts-container">
+     <div style="color:#666;">Select the tab to load. First load fetches & analyzes 10 years of data.</div>
+  </div>
 </div>
 
 <div class="footer">
@@ -498,6 +525,7 @@ function dashboardHTML() {
   </div>
 </template>
 
+<script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
 <script>
 const fmt = n => Number(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const pct  = n => (n>=0?'+':'')+n.toFixed(2)+'%';
@@ -590,6 +618,76 @@ async function refresh() {
   } catch(e) { console.error(e); }
 }
 
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  if(id === 'bot') {
+    document.querySelector('.tab:nth-child(1)').classList.add('active');
+    document.getElementById('tab-bot').classList.add('active');
+  } else {
+    document.querySelector('.tab:nth-child(2)').classList.add('active');
+    document.getElementById('tab-charts').classList.add('active');
+    loadCharts();
+  }
+}
+
+let chartsLoaded = false;
+async function loadCharts() {
+  if (chartsLoaded) return;
+  const container = document.getElementById('charts-container');
+  container.innerHTML = '<div style="color:#888;">Ingesting 10-year data matrix and determining density zones (takes highly dense computation time)...</div>';
+  try {
+    const r = await fetch('/api/charts');
+    const data = await r.json();
+    if(data.status==='success') {
+      container.innerHTML = '';
+      data.charts.forEach((c, idx) => {
+        const div = document.createElement('div');
+        div.className = 'chart-card';
+        div.id = 'plt-' + idx;
+        container.appendChild(div);
+        
+        const shapes = [];
+        const colors = ['rgba(255, 234, 167, 0.25)', 'rgba(250, 177, 160, 0.25)', 'rgba(255, 234, 167, 0.25)', 'rgba(223, 230, 233, 0.25)'];
+        c.top_bins.forEach((b, i) => {
+           shapes.push({
+             type: 'rect', xref: 'x', yref: 'y', x0: c.dates[0], x1: c.dates[c.dates.length-1], y0: b.low, y1: b.high,
+             fillcolor: colors[i] || colors[3], line: {width:0}, layer: 'below'
+           });
+        });
+        
+        shapes.push({
+           type: 'rect', xref: 'x', yref: 'y', x0: c.dates[0], x1: c.dates[c.dates.length-1], y0: c.support.low, y1: c.support.high,
+           fillcolor: 'rgba(46, 204, 113, 0.15)', line: {color: '#27ae60', width:1}, layer: 'below'
+        });
+        
+        shapes.push({
+           type: 'rect', xref: 'x', yref: 'y', x0: c.dates[0], x1: c.dates[c.dates.length-1], y0: c.resistance.low, y1: c.resistance.high,
+           fillcolor: 'rgba(231, 76, 60, 0.15)', line: {color: '#c0392b', width:1}, layer: 'below'
+        });
+      
+        const trace = { x: c.dates, y: c.closes, type: 'scatter', mode: 'lines', line: {color:'#3498db', width:1}, name: 'Close Price' };
+        const layout = {
+           title: '<span style="font-size:14px; font-weight:bold; color:#fff;">' + c.company + ' — 10-Yr S/R Analysis</span><br><span style="font-size:11px; color:#888;">Support: '+c.support.low.toFixed(1)+' - '+c.support.high.toFixed(1)+' | Resistance: '+c.resistance.low.toFixed(1)+' - '+c.resistance.high.toFixed(1)+'</span>',
+           paper_bgcolor: '#161616', plot_bgcolor: '#111',
+           font: {color: '#e0e0e0', size:11},
+           margin: {l: 40, r: 20, t: 50, b: 30},
+           shapes: shapes,
+           showlegend: false,
+           xaxis: { gridcolor: '#222' },
+           yaxis: { gridcolor: '#222' }
+        };
+        Plotly.newPlot(div.id, [trace], layout, {responsive:true});
+      });
+      chartsLoaded = true;
+    } else {
+      container.innerHTML = '<div style="color:#e74c3c;">Failed to load charts: '+data.message+'</div>';
+    }
+  } catch(e) {
+    container.innerHTML = '<div style="color:#e74c3c;">Failed to load charts: ' + e + '</div>';
+  }
+}
+
 refresh();
 setInterval(refresh, 100);
 </script>
@@ -598,13 +696,92 @@ setInterval(refresh, 100);
 }
 
 // ─────────────────────────────────────────────
+// CHART DATA (PYTHON SCRIPT TRANSLATION)
+// ─────────────────────────────────────────────
+const CHART_CONFIG = {
+  COMPANY_MASTER: {
+    "Reliance": "RELIANCE.NS",
+    "Infosys": "INFY.NS",
+    "TCS": "TCS.NS",
+    "TMPV": "TATAMOTORS.NS" // Mapped from TMPV
+  },
+  INTERVAL_COUNT: 10,
+  TOP_N: 4,
+  BOX_TRANSPARENCY: 0.35
+};
+
+const chartCache = {};
+async function getChartDataCached(companyName, ticker) {
+  if (chartCache[ticker] && (Date.now() - chartCache[ticker].ts < 12 * 3600 * 1000)) return chartCache[ticker].data;
+  
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setFullYear(endDate.getFullYear() - 10);
+  info(`Chart Analysis: Downloading 10-yr data for ${companyName} (${ticker})...`);
+  
+  const df = await yahooFinance.historical(ticker, { period1: startDate, period2: endDate, interval: '1d' });
+  if (!df || !df.length) throw new Error("No data returned for " + ticker);
+  
+  let min = Infinity, max = -Infinity;
+  for (let r of df) {
+    if (r.low < min) min = r.low; 
+    if (r.high > max) max = r.high; 
+  }
+  
+  const step = (max - min) / CHART_CONFIG.INTERVAL_COUNT;
+  let bins = Array.from({length: CHART_CONFIG.INTERVAL_COUNT}, (_, i) => ({
+    bin: i+1, low: min + i*step, high: min + (i+1)*step, total: 0, up: 0, down: 0
+  }));
+  
+  for (let r of df) {
+    let idx = Math.floor(((r.high + r.low) / 2 - min) / step);
+    if (idx < 0) idx = 0; if (idx >= CHART_CONFIG.INTERVAL_COUNT) idx = CHART_CONFIG.INTERVAL_COUNT - 1;
+    bins[idx].total += r.volume;
+    if (r.close > r.open) bins[idx].up += r.volume;
+    else if (r.close < r.open) bins[idx].down += r.volume;
+  }
+  
+  bins.forEach(b => b.sentiment = b.up > b.down ? 'Positive' : 'Negative');
+  
+  let sorted = [...bins].sort((a,b) => b.total - a.total);
+  let topN = sorted.slice(0, CHART_CONFIG.TOP_N);
+  
+  let posTop = topN.filter(b => b.sentiment === 'Positive').sort((a,b) => b.up - a.up);
+  let support = posTop.length > 0 ? posTop[0] : [...bins].sort((a,b) => b.up - a.up)[0];
+  
+  let negTop = topN.filter(b => b.sentiment === 'Negative').sort((a,b) => b.down - a.down);
+  let resis = negTop.length > 0 ? negTop[0] : [...bins].sort((a,b) => b.down - a.down)[0];
+
+  const result = { 
+    dates: df.map(r=>r.date.toISOString().split('T')[0]), 
+    closes: df.map(r=>r.close), 
+    top_bins: topN, 
+    support, 
+    resistance: resis, 
+    company: companyName 
+  };
+  chartCache[ticker] = { ts: Date.now(), data: result };
+  return result;
+}
+
+// ─────────────────────────────────────────────
 // DASHBOARD HTTP SERVER
 // ─────────────────────────────────────────────
 function startDashboard() {
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     if (req.url === "/api/state") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ...state, marketOpen: isMarketOpen() }));
+    } else if (req.url === "/api/charts") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      try {
+        const results = await Promise.all(
+          Object.entries(CHART_CONFIG.COMPANY_MASTER).map(([name, ticker]) => getChartDataCached(name, ticker))
+        );
+        res.end(JSON.stringify({ status: "success", charts: results }));
+      } catch (e) {
+        res.end(JSON.stringify({ status: "error", message: e.message }));
+      }
     } else {
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(dashboardHTML());
