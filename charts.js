@@ -2,18 +2,18 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 
-// Configuration: Hardcoded for Reliance Industries
+// Configuration parameters
 const TICKER = "RELIANCE.NS";
 const FILE_NAME = "stock_data.csv";
 const CSV_PATH = path.join(__dirname, FILE_NAME);
 
 /**
- * STEP 1, 2 & 3: Fetch from Yahoo, Save to CSV (Excel), and Calculate
+ * BACKEND LOGIC: Handles Steps 1, 2, and 3
  */
 function handleChartData(req, res) {
   try {
     const period2 = Math.floor(Date.now() / 1000);
-    const period1 = period2 - (10 * 365 * 24 * 60 * 60); // 10 Years
+    const period1 = period2 - (10 * 365 * 24 * 60 * 60); // 10 Year Lookback
 
     const yahooCsvUrl = `https://query1.finance.yahoo.com/v7/finance/download/${TICKER}?period1=${period1}&period2=${period2}&interval=1mo&events=history&includeAdjustedClose=true`;
 
@@ -24,11 +24,11 @@ function handleChartData(req, res) {
       }
     };
 
-    // STEP 1: Fetch data from Yahoo Finance
+    // STEP 1: Fetch raw data from Yahoo Finance
     https.get(yahooCsvUrl, options, (response) => {
       if (response.statusCode !== 200) {
         res.writeHead(500, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "Yahoo rejected connection." }));
+        return res.end(JSON.stringify({ error: "Yahoo connection failed. Status: " + response.statusCode }));
       }
 
       let rawData = "";
@@ -36,10 +36,10 @@ function handleChartData(req, res) {
       
       response.on("end", () => {
         try {
-          // STEP 2: Save raw data directly into an Excel-readable CSV file
+          // STEP 2: Save the data locally as an Excel-compatible CSV file
           fs.writeFileSync(CSV_PATH, rawData, "utf8");
 
-          // STEP 3: Read from the saved CSV file and perform the calculations
+          // STEP 3: Load the saved CSV from disk and calculate 3-Month Moving Average
           const savedData = fs.readFileSync(CSV_PATH, "utf8");
           const lines = savedData.split("\n");
           
@@ -73,7 +73,7 @@ function handleChartData(req, res) {
             }
           }
 
-          // Calculation Engine: 3-Month Simple Moving Average
+          // Calculation Pipeline
           const computedData = results.map((row, index, array) => {
             if (index >= 2) {
               const sum = array[index].close + array[index - 1].close + array[index - 2].close;
@@ -84,28 +84,27 @@ function handleChartData(req, res) {
             return row;
           });
 
-          // Return calculated data payload to frontend
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(computedData));
 
         } catch (err) {
           res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "File write or math engine failure." }));
+          res.end(JSON.stringify({ error: "CSV file processing error." }));
         }
       });
     }).on("error", (e) => {
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Network down." }));
+      res.end(JSON.stringify({ error: "Network stream connection dropped." }));
     });
 
   } catch (error) {
     res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Critical process failure." }));
+    res.end(JSON.stringify({ error: "Internal processing crash scenario." }));
   }
 }
 
 /**
- * STEP 4 & 5: Make and Show the Chart (Frontend Interface)
+ * FRONTEND LOGIC: Handles Steps 4 and 5 (Build and Render Chart)
  */
 function handleChartsHtml(req, res) {
   res.writeHead(200, { "Content-Type": "text/html" });
@@ -125,7 +124,7 @@ function handleChartsHtml(req, res) {
 
 <div class="container">
     <h2>Reliance Industries (RIL) Automated Performance Chart</h2>
-    <div id="status">Execution Status: Loading Steps 1-5...</div>
+    <div id="status">Execution Status: Loading Pipeline Data...</div>
     <canvas id="stockCanvas" width="400" height="180"></canvas>
 </div>
 
@@ -144,7 +143,7 @@ async function runAutomationPipeline() {
             return;
         }
 
-        statusText.innerText = "Execution Status: Steps 1-3 Success. Rendering Final Visuals...";
+        statusText.innerText = "Execution Status: Steps 1-3 Complete. Running Chart Controls...";
 
         var dateLabels = data.map(function(item) { return item.date; });
         var closingPrices = data.map(function(item) { return item.close; });
@@ -154,7 +153,7 @@ async function runAutomationPipeline() {
             activeChartInstance.destroy();
         }
 
-        // STEP 4 & 5: Make the Chart and Show it on screen
+        // STEP 4 & 5: Make and Display the Chart Layout
         var ctx = document.getElementById("stockCanvas").getContext("2d");
         activeChartInstance = new Chart(ctx, {
             type: "line",
@@ -189,10 +188,10 @@ async function runAutomationPipeline() {
             }
         });
 
-        statusText.innerText = "Execution Status: Live Chart Rendered Successfully.";
+        statusText.innerText = "Execution Status: Steps 1-5 Completed Successfully.";
 
     } catch (err) {
-        statusText.innerText = "Execution Status: Error displaying pipeline metrics.";
+        statusText.innerText = "Execution Status: Critical Display Error.";
     }
 }
 
