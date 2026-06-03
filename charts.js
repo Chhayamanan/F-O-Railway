@@ -1,14 +1,10 @@
 const https = require("https");
-const fs = require("fs");
-const path = require("path");
 
-// Configuration parameters
+// Hardcoded for Reliance Industries
 const TICKER = "RELIANCE.NS";
-const FILE_NAME = "stock_data.csv";
-const CSV_PATH = path.join(__dirname, FILE_NAME);
 
 /**
- * BACKEND LOGIC: Handles Steps 1, 2, and 3
+ * BACKEND LOGIC: Handles Steps 1, 2, and 3 entirely in RAM
  */
 function handleChartData(req, res) {
   try {
@@ -28,7 +24,7 @@ function handleChartData(req, res) {
     https.get(yahooCsvUrl, options, (response) => {
       if (response.statusCode !== 200) {
         res.writeHead(500, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "Yahoo connection failed. Status: " + response.statusCode }));
+        return res.end(JSON.stringify({ error: "Yahoo engine rejected request. Status: " + response.statusCode }));
       }
 
       let rawData = "";
@@ -36,13 +32,13 @@ function handleChartData(req, res) {
       
       response.on("end", () => {
         try {
-          // STEP 2: Save the data locally as an Excel-compatible CSV file
-          fs.writeFileSync(CSV_PATH, rawData, "utf8");
+          // STEP 2 & 3: Read CSV data streams directly out of memory and calculate
+          const lines = rawData.split("\n");
+          if (lines.length <= 1) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            return res.end(JSON.stringify({ error: "Empty stream returned from data provider." }));
+          }
 
-          // STEP 3: Load the saved CSV from disk and calculate 3-Month Moving Average
-          const savedData = fs.readFileSync(CSV_PATH, "utf8");
-          const lines = savedData.split("\n");
-          
           const headers = lines[0].trim().split(",");
           const dateIdx = headers.indexOf("Date");
           const openIdx = headers.indexOf("Open");
@@ -73,7 +69,7 @@ function handleChartData(req, res) {
             }
           }
 
-          // Calculation Pipeline
+          // Calculation Pipeline: 3-Month Moving Average
           const computedData = results.map((row, index, array) => {
             if (index >= 2) {
               const sum = array[index].close + array[index - 1].close + array[index - 2].close;
@@ -89,7 +85,7 @@ function handleChartData(req, res) {
 
         } catch (err) {
           res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "CSV file processing error." }));
+          res.end(JSON.stringify({ error: "In-memory processing malfunction." }));
         }
       });
     }).on("error", (e) => {
@@ -99,7 +95,7 @@ function handleChartData(req, res) {
 
   } catch (error) {
     res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Internal processing crash scenario." }));
+    res.end(JSON.stringify({ error: "Internal service logic error." }));
   }
 }
 
@@ -124,7 +120,7 @@ function handleChartsHtml(req, res) {
 
 <div class="container">
     <h2>Reliance Industries (RIL) Automated Performance Chart</h2>
-    <div id="status">Execution Status: Loading Pipeline Data...</div>
+    <div id="status">Execution Status: Syncing with Financial Pipeline...</div>
     <canvas id="stockCanvas" width="400" height="180"></canvas>
 </div>
 
@@ -143,7 +139,7 @@ async function runAutomationPipeline() {
             return;
         }
 
-        statusText.innerText = "Execution Status: Steps 1-3 Complete. Running Chart Controls...";
+        statusText.innerText = "Execution Status: Steps 1-3 Complete. Processing Visual Layer...";
 
         var dateLabels = data.map(function(item) { return item.date; });
         var closingPrices = data.map(function(item) { return item.close; });
@@ -188,10 +184,10 @@ async function runAutomationPipeline() {
             }
         });
 
-        statusText.innerText = "Execution Status: Steps 1-5 Completed Successfully.";
+        statusText.innerText = "Execution Status: Live Chart Display Active.";
 
     } catch (err) {
-        statusText.innerText = "Execution Status: Critical Display Error.";
+        statusText.innerText = "Execution Status: Critical Display Layout Failure.";
     }
 }
 
