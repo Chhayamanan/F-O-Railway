@@ -720,7 +720,8 @@ async function getChartDataCached(companyName, ticker) {
   startDate.setFullYear(endDate.getFullYear() - 10);
   info(`Chart Analysis: Downloading 10-yr data for ${companyName} (${ticker})...`);
   
-  const df = await yahooFinance.historical(ticker, { period1: startDate, period2: endDate, interval: '1d' });
+  const chartRes = await yahooFinance.chart(ticker, { period1: startDate, period2: endDate, interval: '1d' });
+  const df = chartRes.quotes;
   if (!df || !df.length) throw new Error("No data returned for " + ticker);
   
   let min = Infinity, max = -Infinity;
