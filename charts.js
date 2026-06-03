@@ -1,201 +1,191 @@
-const https = require("https");
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 
-// Hardcoded for Reliance Industries
-const TICKER = "RELIANCE.NS";
+# ==========================================
+# STEP 1 - FETCH RIL DATA
+# ==========================================
 
-/**
- * BACKEND LOGIC: Handles Steps 1, 2, and 3 entirely in RAM
- */
-function handleChartData(req, res) {
-  try {
-    const period2 = Math.floor(Date.now() / 1000);
-    const period1 = period2 - (10 * 365 * 24 * 60 * 60); // 10 Year Lookback
+symbol = "RELIANCE.NS"
 
-    const yahooCsvUrl = `https://query1.finance.yahoo.com/v7/finance/download/${TICKER}?period1=${period1}&period2=${period2}&interval=1mo&events=history&includeAdjustedClose=true`;
+df = yf.download(
+    symbol,
+    period="5y",
+    auto_adjust=False,
+    progress=False
+)
 
-    const options = {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9"
-      }
-    };
+df = df[['Open','High','Low','Close','Volume']]
+df.dropna(inplace=True)
 
-    // STEP 1: Fetch raw data from Yahoo Finance
-    https.get(yahooCsvUrl, options, (response) => {
-      if (response.statusCode !== 200) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "Yahoo engine rejected request. Status: " + response.statusCode }));
-      }
+# ==========================================
+# STEP 2 - INTERVAL CALCULATION
+# ==========================================
 
-      let rawData = "";
-      response.on("data", (chunk) => { rawData += chunk; });
-      
-      response.on("end", () => {
-        try {
-          // STEP 2 & 3: Read CSV data streams directly out of memory and calculate
-          const lines = rawData.split("\n");
-          if (lines.length <= 1) {
-            res.writeHead(500, { "Content-Type": "application/json" });
-            return res.end(JSON.stringify({ error: "Empty stream returned from data provider." }));
-          }
+INTERVAL_COUNT = 10
+TOP_N = 4
 
-          const headers = lines[0].trim().split(",");
-          const dateIdx = headers.indexOf("Date");
-          const openIdx = headers.indexOf("Open");
-          const highIdx = headers.indexOf("High");
-          const lowIdx = headers.indexOf("Low");
-          const closeIdx = headers.indexOf("Close");
-          const volumeIdx = headers.indexOf("Volume");
+close_min = df["Close"].min()
+close_max = df["Close"].max()
 
-          const results = [];
+price_range = close_max - close_min
+step_size = price_range / INTERVAL_COUNT
 
-          for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line) continue;
+bins = []
 
-            const values = line.split(",");
-            if (values.length < headers.length) continue;
+for i in range(INTERVAL_COUNT):
+    low = close_min + i * step_size
+    high = low + step_size
 
-            const closeVal = values[closeIdx];
-            if (values[dateIdx] && closeVal && closeVal !== "null") {
-              results.push({
-                date: values[dateIdx],
-                open: parseFloat(values[openIdx]),
-                high: parseFloat(values[highIdx]),
-                low: parseFloat(values[lowIdx]),
-                close: parseFloat(closeVal),
-                volume: parseInt(values[volumeIdx], 10) || 0
-              });
-            }
-          }
+    bins.append({
+        "Bin": i + 1,
+        "Low": low,
+        "High": high,
+        "TotalVol": 0,
+        "UpVol": 0,
+        "DownVol": 0
+    })
 
-          // Calculation Pipeline: 3-Month Moving Average
-          const computedData = results.map((row, index, array) => {
-            if (index >= 2) {
-              const sum = array[index].close + array[index - 1].close + array[index - 2].close;
-              row.movingAverage3Mo = parseFloat((sum / 3).toFixed(2));
-            } else {
-              row.movingAverage3Mo = row.close;
-            }
-            return row;
-          });
+# ==========================================
+# STEP 3 - ASSIGN VOLUME TO INTERVALS
+# ==========================================
 
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(computedData));
+for _, row in df.iterrows():
 
-        } catch (err) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "In-memory processing malfunction." }));
-        }
-      });
-    }).on("error", (e) => {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Network stream connection dropped." }));
-    });
+    mid_price = (row["High"] + row["Low"]) / 2
 
-  } catch (error) {
-    res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Internal service logic error." }));
-  }
-}
+    idx = int((mid_price - close_min) / step_size)
 
-/**
- * FRONTEND LOGIC: Handles Steps 4 and 5 (Build and Render Chart)
- */
-function handleChartsHtml(req, res) {
-  res.writeHead(200, { "Content-Type": "text/html" });
-  res.end(`<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>RIL Automation Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body { font-family: sans-serif; background: #f4f6f9; margin: 40px; color: #333; }
-        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        #status { color: #666; font-weight: bold; margin-bottom: 15px; }
-    </style>
-</head>
-<body>
+    idx = max(0, min(idx, INTERVAL_COUNT - 1))
 
-<div class="container">
-    <h2>Reliance Industries (RIL) Automated Performance Chart</h2>
-    <div id="status">Execution Status: Syncing with Financial Pipeline...</div>
-    <canvas id="stockCanvas" width="400" height="180"></canvas>
-</div>
+    bins[idx]["TotalVol"] += row["Volume"]
 
-<script>
-var activeChartInstance = null;
+    if row["Close"] > row["Open"]:
+        bins[idx]["UpVol"] += row["Volume"]
 
-async function runAutomationPipeline() {
-    var statusText = document.getElementById("status");
+    elif row["Close"] < row["Open"]:
+        bins[idx]["DownVol"] += row["Volume"]
 
-    try {
-        var response = await fetch("/api/chart-data");
-        var data = await response.json();
+# ==========================================
+# STEP 4 - CREATE TABLE
+# ==========================================
 
-        if (data.error) {
-            statusText.innerText = "Execution Status: Failed - " + data.error;
-            return;
-        }
+interval_df = pd.DataFrame(bins)
 
-        statusText.innerText = "Execution Status: Steps 1-3 Complete. Processing Visual Layer...";
+interval_df["Type"] = np.where(
+    interval_df["UpVol"] > interval_df["DownVol"],
+    "Positive",
+    np.where(
+        interval_df["DownVol"] > interval_df["UpVol"],
+        "Negative",
+        "Neutral"
+    )
+)
 
-        var dateLabels = data.map(function(item) { return item.date; });
-        var closingPrices = data.map(function(item) { return item.close; });
-        var movingAverages = data.map(function(item) { return item.movingAverage3Mo; });
+interval_df = interval_df.sort_values(
+    "TotalVol",
+    ascending=False
+)
 
-        if (activeChartInstance) {
-            activeChartInstance.destroy();
-        }
+top4 = interval_df.head(TOP_N)
 
-        // STEP 4 & 5: Make and Display the Chart Layout
-        var ctx = document.getElementById("stockCanvas").getContext("2d");
-        activeChartInstance = new Chart(ctx, {
-            type: "line",
-            data: {
-                labels: dateLabels,
-                datasets: [
-                    {
-                        label: "RIL Close Price (INR)",
-                        data: closingPrices,
-                        borderColor: "#007bff",
-                        backgroundColor: "transparent",
-                        borderWidth: 2,
-                        pointRadius: 1
-                    },
-                    {
-                        label: "3-Month Moving Average (Calculated)",
-                        data: movingAverages,
-                        borderColor: "#ffc107",
-                        backgroundColor: "transparent",
-                        borderWidth: 2,
-                        borderDash: [5, 5],
-                        pointRadius: 0
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    x: { grid: { display: false } },
-                    y: { ticks: { callback: function(value) { return "₹" + value; } } }
-                }
-            }
-        });
+# ==========================================
+# STEP 5 - SUPPORT
+# ==========================================
 
-        statusText.innerText = "Execution Status: Live Chart Display Active.";
+positive_bins = top4[top4["UpVol"] > top4["DownVol"]]
 
-    } catch (err) {
-        statusText.innerText = "Execution Status: Critical Display Layout Failure.";
-    }
-}
+if len(positive_bins):
+    support_row = positive_bins.loc[
+        positive_bins["UpVol"].idxmax()
+    ]
+else:
+    support_row = interval_df.loc[
+        interval_df["UpVol"].idxmax()
+    ]
 
-window.onload = runAutomationPipeline;
-</script>
+support_low = support_row["Low"]
+support_high = support_row["High"]
 
-</body>
-</html>`);
-}
+# ==========================================
+# STEP 6 - RESISTANCE
+# ==========================================
 
-module.exports = { handleChartData, handleChartsHtml };
+negative_bins = top4[top4["DownVol"] > top4["UpVol"]]
+
+if len(negative_bins):
+    resistance_row = negative_bins.loc[
+        negative_bins["DownVol"].idxmax()
+    ]
+else:
+    resistance_row = interval_df.loc[
+        interval_df["DownVol"].idxmax()
+    ]
+
+resistance_low = resistance_row["Low"]
+resistance_high = resistance_row["High"]
+
+# ==========================================
+# STEP 7 - OUTPUT TABLE
+# ==========================================
+
+print("\nTOP 4 INTERVALS")
+print(top4[
+    [
+        "Bin",
+        "Low",
+        "High",
+        "TotalVol",
+        "UpVol",
+        "DownVol",
+        "Type"
+    ]
+].round(2))
+
+print("\nSUPPORT ZONE")
+print(
+    f"{support_low:.2f} - {support_high:.2f}"
+)
+
+print("\nRESISTANCE ZONE")
+print(
+    f"{resistance_low:.2f} - {resistance_high:.2f}"
+)
+
+# ==========================================
+# STEP 8 - CHART
+# ==========================================
+
+plt.figure(figsize=(16,8))
+
+plt.plot(
+    df.index,
+    df["Close"],
+    linewidth=1.2,
+    label="Close Price"
+)
+
+plt.axhspan(
+    support_low,
+    support_high,
+    alpha=0.25,
+    label="Support Zone"
+)
+
+plt.axhspan(
+    resistance_low,
+    resistance_high,
+    alpha=0.25,
+    label="Resistance Zone"
+)
+
+plt.title(
+    f"{symbol} Interval Volume Support Resistance"
+)
+
+plt.ylabel("Price")
+plt.legend()
+plt.grid(True)
+
+plt.show()
