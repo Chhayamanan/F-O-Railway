@@ -1,26 +1,20 @@
 const https = require("https");
 
 /**
- * API End-point: Downloads Yahoo Finance CSV using native HTTPS, 
- * manually parses it line-by-line, and calculates a 3-Month Moving Average.
+ * API End-point: Hardcoded to fetch RELIANCE.NS (RIL) from Yahoo Finance,
+ * parses the CSV natively, and calculates a 3-Month Moving Average.
  */
 function handleChartData(req, res) {
   try {
-    const baseURL = req.headers.host ? `http://${req.headers.host}` : "http://localhost";
-    const urlParams = new URL(req.url, baseURL).searchParams;
-    const ticker = urlParams.get("ticker");
-
-    if (!ticker) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ error: "Ticker parameter is required" }));
-    }
+    // HARDCODED TICKER: Set to Reliance Industries NSE symbol
+    const ticker = "RELIANCE.NS";
 
     // Generate UNIX timestamps for a 10-year lookback period
     const period2 = Math.floor(Date.now() / 1000);
     const period1 = period2 - (10 * 365 * 24 * 60 * 60);
 
     // Direct Yahoo Finance raw CSV download engine URL
-    const yahooCsvUrl = `https://query1.finance.yahoo.com/v7/finance/download/${ticker.toUpperCase()}?period1=${period1}&period2=${period2}&interval=1mo&events=history&includeAdjustedClose=true`;
+    const yahooCsvUrl = `https://query1.finance.yahoo.com/v7/finance/download/${ticker}?period1=${period1}&period2=${period2}&interval=1mo&events=history&includeAdjustedClose=true`;
 
     const options = {
       headers: {
@@ -29,7 +23,6 @@ function handleChartData(req, res) {
       }
     };
 
-    // Native HTTPS Request to bypass proxy/blocking rules
     https.get(yahooCsvUrl, options, (response) => {
       if (response.statusCode !== 200) {
         res.writeHead(500, { "Content-Type": "application/json" });
@@ -47,7 +40,6 @@ function handleChartData(req, res) {
             return res.end(JSON.stringify({ error: "Empty CSV response received from financial engine." }));
           }
 
-          // Extract headers dynamically: Date,Open,High,Low,Close,Adj Close,Volume
           const headers = lines[0].trim().split(",");
           const dateIdx = headers.indexOf("Date");
           const openIdx = headers.indexOf("Open");
@@ -58,7 +50,6 @@ function handleChartData(req, res) {
 
           const results = [];
 
-          // Manual string CSV parsing engine
           for (let i = 1; i < lines.length; i++) {
             const line = lines[i].trim();
             if (!line) continue;
@@ -82,7 +73,7 @@ function handleChartData(req, res) {
             }
           }
 
-          // Calculation Engine: Generate a 3-Month Simple Moving Average (SMA)
+          // Compute 3-Month Moving Average
           const computedData = results.map((row, index, array) => {
             if (index >= 2) {
               const sum = array[index].close + array[index - 1].close + array[index - 2].close;
@@ -98,7 +89,7 @@ function handleChartData(req, res) {
 
         } catch (parseError) {
           res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "CSV Stream processing execution broke." }));
+          res.end(JSON.stringify({ error: "CSV processing execution broke." }));
         }
       });
 
@@ -114,7 +105,7 @@ function handleChartData(req, res) {
 }
 
 /**
- * UI Route Handler: Directly serves the HTML Dashboard code interface
+ * UI Route Handler: Directly serves the HTML Dashboard. No input boxes required.
  */
 function handleChartsHtml(req, res) {
   res.writeHead(200, { "Content-Type": "text/html" });
@@ -122,29 +113,19 @@ function handleChartsHtml(req, res) {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Financial Analysis Dashboard</title>
+    <title>RIL Analysis Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: sans-serif; background: #f4f6f9; margin: 40px; color: #333; }
         .container { max-width: 1000px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        .controls { margin-bottom: 25px; display: flex; gap: 10px; }
-        input { padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; width: 150px; }
-        button { padding: 10px 20px; font-size: 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #0056b3; }
         #loading { display: none; color: #666; font-weight: bold; margin-bottom: 15px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>10-Year CSV Stock Performance Matrix</h2>
-    
-    <div class="controls">
-        <input type="text" id="tickerInput" value="AAPL" placeholder="e.g. AAPL, MSFT, TSLA">
-        <button onclick="renderStockChart()">Update Chart</button>
-    </div>
-
-    <div id="loading">Streaming and processing CSV rows...</div>
+    <h2>Reliance Industries (RIL) 10-Year Performance</h2>
+    <div id="loading">Streaming data directly from Yahoo Finance...</div>
     <canvas id="stockCanvas" width="400" height="180"></canvas>
 </div>
 
@@ -152,14 +133,12 @@ function handleChartsHtml(req, res) {
 var activeChartInstance = null;
 
 async function renderStockChart() {
-    var ticker = document.getElementById("tickerInput").value.trim();
     var loader = document.getElementById("loading");
-    if(!ticker) return alert("Please enter a valid ticker!");
-
     loader.style.display = "block";
 
     try {
-        var response = await fetch("/api/chart-data?ticker=" + ticker);
+        // Calls the backend endpoint directly without passing a query string
+        var response = await fetch("/api/chart-data");
         var data = await response.json();
 
         if (data.error) {
@@ -182,7 +161,7 @@ async function renderStockChart() {
                 labels: dateLabels,
                 datasets: [
                     {
-                        label: ticker.toUpperCase() + " Monthly Close",
+                        label: "RIL Monthly Close (INR)",
                         data: closingPrices,
                         borderColor: "#007bff",
                         backgroundColor: "transparent",
@@ -190,7 +169,7 @@ async function renderStockChart() {
                         pointRadius: 1
                     },
                     {
-                        label: "3-Month Moving Average (Calculated)",
+                        label: "3-Month Moving Average",
                         data: movingAverages,
                         borderColor: "#ffc107",
                         backgroundColor: "transparent",
@@ -204,17 +183,18 @@ async function renderStockChart() {
                 responsive: true,
                 scales: {
                     x: { grid: { display: false } },
-                    y: { ticks: { callback: function(value) { return "$" + value; } } }
+                    y: { ticks: { callback: function(value) { return "₹" + value; } } }
                 }
             }
         });
     } catch (err) {
-        alert("Failed loading frontend script payload.");
+        console.error(err);
     } finally {
         loader.style.display = "none";
     }
 }
 
+// Automatically execute on load
 window.onload = renderStockChart;
 </script>
 
