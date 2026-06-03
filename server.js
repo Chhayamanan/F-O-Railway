@@ -461,13 +461,8 @@ function dashboardHTML() {
   </div>
 </div>
 
-<div id="tab-charts" class="tab-content">
-  <div style="padding: 20px 24px; color:#aaa; font-size:13px; line-height: 1.5;">
-     <strong>Python Strategy Integration:</strong> Processing 10-year Yahoo Finance optimization matrices for Top 4 Volume Distribution Blocks to compute Support & Resistance zones.
-  </div>
-  <div class="chart-grid" id="charts-container">
-     <div style="color:#666;">Select the tab to load. First load fetches & analyzes 10 years of data.</div>
-  </div>
+<div id="tab-charts" class="tab-content" style="padding: 10px;">
+  <iframe src="/charts" style="width:100%; height:80vh; border:none; border-radius:12px; background:#fff;"></iframe>
 </div>
 
 <div class="footer">
@@ -635,58 +630,7 @@ function switchTab(id) {
 let chartsLoaded = false;
 async function loadCharts() {
   if (chartsLoaded) return;
-  const container = document.getElementById('charts-container');
-  container.innerHTML = '<div style="color:#888;">Ingesting 10-year data matrix and determining density zones (takes highly dense computation time)...</div>';
-  try {
-    const r = await fetch('/api/charts');
-    const data = await r.json();
-    if(data.status==='success') {
-      container.innerHTML = '';
-      data.charts.forEach((c, idx) => {
-        const div = document.createElement('div');
-        div.className = 'chart-card';
-        div.id = 'plt-' + idx;
-        container.appendChild(div);
-        
-        const shapes = [];
-        const colors = ['rgba(255, 234, 167, 0.25)', 'rgba(250, 177, 160, 0.25)', 'rgba(255, 234, 167, 0.25)', 'rgba(223, 230, 233, 0.25)'];
-        c.top_bins.forEach((b, i) => {
-           shapes.push({
-             type: 'rect', xref: 'x', yref: 'y', x0: c.dates[0], x1: c.dates[c.dates.length-1], y0: b.low, y1: b.high,
-             fillcolor: colors[i] || colors[3], line: {width:0}, layer: 'below'
-           });
-        });
-        
-        shapes.push({
-           type: 'rect', xref: 'x', yref: 'y', x0: c.dates[0], x1: c.dates[c.dates.length-1], y0: c.support.low, y1: c.support.high,
-           fillcolor: 'rgba(46, 204, 113, 0.15)', line: {color: '#27ae60', width:1}, layer: 'below'
-        });
-        
-        shapes.push({
-           type: 'rect', xref: 'x', yref: 'y', x0: c.dates[0], x1: c.dates[c.dates.length-1], y0: c.resistance.low, y1: c.resistance.high,
-           fillcolor: 'rgba(231, 76, 60, 0.15)', line: {color: '#c0392b', width:1}, layer: 'below'
-        });
-      
-        const trace = { x: c.dates, y: c.closes, type: 'scatter', mode: 'lines', line: {color:'#3498db', width:1}, name: 'Close Price' };
-        const layout = {
-           title: '<span style="font-size:14px; font-weight:bold; color:#fff;">' + c.company + ' — 10-Yr S/R Analysis</span><br><span style="font-size:11px; color:#888;">Support: '+c.support.low.toFixed(1)+' - '+c.support.high.toFixed(1)+' | Resistance: '+c.resistance.low.toFixed(1)+' - '+c.resistance.high.toFixed(1)+'</span>',
-           paper_bgcolor: '#161616', plot_bgcolor: '#111',
-           font: {color: '#e0e0e0', size:11},
-           margin: {l: 40, r: 20, t: 50, b: 30},
-           shapes: shapes,
-           showlegend: false,
-           xaxis: { gridcolor: '#222' },
-           yaxis: { gridcolor: '#222' }
-        };
-        Plotly.newPlot(div.id, [trace], layout, {responsive:true});
-      });
-      chartsLoaded = true;
-    } else {
-      container.innerHTML = '<div style="color:#e74c3c;">Failed to load charts: '+data.message+'</div>';
-    }
-  } catch(e) {
-    container.innerHTML = '<div style="color:#e74c3c;">Failed to load charts: ' + e + '</div>';
-  }
+  chartsLoaded = true;
 }
 
 refresh();
@@ -697,76 +641,6 @@ setInterval(refresh, 100);
 }
 
 // ─────────────────────────────────────────────
-// CHART DATA (PYTHON SCRIPT TRANSLATION)
-// ─────────────────────────────────────────────
-const CHART_CONFIG = {
-  COMPANY_MASTER: {
-    "Reliance": "RELIANCE.NS",
-    "Infosys": "INFY.NS",
-    "TCS": "TCS.NS",
-    "TMPV": "TATAMOTORS.NS" // Mapped from TMPV
-  },
-  INTERVAL_COUNT: 10,
-  TOP_N: 4,
-  BOX_TRANSPARENCY: 0.35
-};
-
-const chartCache = {};
-async function getChartDataCached(companyName, ticker) {
-  if (chartCache[ticker] && (Date.now() - chartCache[ticker].ts < 12 * 3600 * 1000)) return chartCache[ticker].data;
-  
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setFullYear(endDate.getFullYear() - 10);
-  info(`Chart Analysis: Downloading 10-yr data for ${companyName} (${ticker})...`);
-  
-  const chartRes = await yahooFinance.chart(ticker, { period1: startDate, period2: endDate, interval: '1d' });
-  const df = chartRes.quotes;
-  if (!df || !df.length) throw new Error("No data returned for " + ticker);
-  
-  let min = Infinity, max = -Infinity;
-  for (let r of df) {
-    if (r.low < min) min = r.low; 
-    if (r.high > max) max = r.high; 
-  }
-  
-  const step = (max - min) / CHART_CONFIG.INTERVAL_COUNT;
-  let bins = Array.from({length: CHART_CONFIG.INTERVAL_COUNT}, (_, i) => ({
-    bin: i+1, low: min + i*step, high: min + (i+1)*step, total: 0, up: 0, down: 0
-  }));
-  
-  for (let r of df) {
-    let idx = Math.floor(((r.high + r.low) / 2 - min) / step);
-    if (idx < 0) idx = 0; if (idx >= CHART_CONFIG.INTERVAL_COUNT) idx = CHART_CONFIG.INTERVAL_COUNT - 1;
-    bins[idx].total += r.volume;
-    if (r.close > r.open) bins[idx].up += r.volume;
-    else if (r.close < r.open) bins[idx].down += r.volume;
-  }
-  
-  bins.forEach(b => b.sentiment = b.up > b.down ? 'Positive' : 'Negative');
-  
-  let sorted = [...bins].sort((a,b) => b.total - a.total);
-  let topN = sorted.slice(0, CHART_CONFIG.TOP_N);
-  
-  let posTop = topN.filter(b => b.sentiment === 'Positive').sort((a,b) => b.up - a.up);
-  let support = posTop.length > 0 ? posTop[0] : [...bins].sort((a,b) => b.up - a.up)[0];
-  
-  let negTop = topN.filter(b => b.sentiment === 'Negative').sort((a,b) => b.down - a.down);
-  let resis = negTop.length > 0 ? negTop[0] : [...bins].sort((a,b) => b.down - a.down)[0];
-
-  const result = { 
-    dates: df.map(r=>r.date.toISOString().split('T')[0]), 
-    closes: df.map(r=>r.close), 
-    top_bins: topN, 
-    support, 
-    resistance: resis, 
-    company: companyName 
-  };
-  chartCache[ticker] = { ts: Date.now(), data: result };
-  return result;
-}
-
-// ─────────────────────────────────────────────
 // DASHBOARD HTTP SERVER
 // ─────────────────────────────────────────────
 function startDashboard() {
@@ -774,16 +648,391 @@ function startDashboard() {
     if (req.url === "/api/state") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ...state, marketOpen: isMarketOpen() }));
-    } else if (req.url === "/api/charts") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      try {
-        const results = await Promise.all(
-          Object.entries(CHART_CONFIG.COMPANY_MASTER).map(([name, ticker]) => getChartDataCached(name, ticker))
-        );
-        res.end(JSON.stringify({ status: "success", charts: results }));
-      } catch (e) {
-        res.end(JSON.stringify({ status: "error", message: e.message }));
+    } else if (req.url === "/charts") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NSE Volume Support & Resistance Analyzer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #1a1a1a; padding: 24px; }
+    h1 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+    #stock-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    #stock-tabs button {
+      padding: 6px 16px; border-radius: 8px; border: 1px solid #ccc;
+      background: #fff; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s;
+    }
+    #stock-tabs button.active { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+    #status-msg { font-size: 13px; color: #666; margin-bottom: 16px; }
+    #metric-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 20px; }
+    .metric-card { background: #fff; border-radius: 8px; border: 1px solid #e5e7eb; padding: 12px 14px; }
+    .metric-card .label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+    .metric-card .value { font-size: 15px; font-weight: 500; }
+    #chart-wrap { position: relative; width: 100%; height: 360px; background: #fff; border-radius: 10px; border: 1px solid #e5e7eb; padding: 12px; margin-bottom: 12px; }
+    #chart-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #6b7280; margin-bottom: 20px; }
+    #chart-legend span { display: flex; align-items: center; gap: 5px; }
+    .legend-swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border-radius: 10px; overflow: hidden; border: 1px solid #e5e7eb; }
+    thead tr { background: #f9fafb; }
+    th { padding: 10px 12px; text-align: left; font-weight: 500; color: #6b7280; }
+    th:not(:first-child) { text-align: right; }
+    th:last-child { text-align: center; }
+    td { padding: 9px 12px; border-top: 1px solid #f3f4f6; }
+    td:not(:first-child) { text-align: right; }
+    td:last-child { text-align: center; }
+    .badge { font-size: 11px; padding: 2px 7px; border-radius: 4px; }
+    .badge-support { background: #d1fae5; color: #065f46; }
+    .badge-resistance { background: #fee2e2; color: #991b1b; }
+    .badge-pos { background: #d1fae5; color: #065f46; }
+    .badge-neg { background: #fee2e2; color: #991b1b; }
+    .footer { font-size: 12px; color: #9ca3af; margin-top: 12px; }
+    .error-msg { color: #dc2626; font-size: 13px; padding: 12px 0; }
+  </style>
+</head>
+<body>
+
+<h1>NSE Volume Support &amp; Resistance Analyzer</h1>
+
+<div id="stock-tabs"></div>
+<div id="status-msg">Loading…</div>
+<div id="metric-cards"></div>
+
+<div id="chart-wrap">
+  <canvas id="srChart" role="img" aria-label="Price history with support and resistance zones"></canvas>
+</div>
+
+<div id="chart-legend"></div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Bin #</th>
+      <th>Low (₹)</th>
+      <th>High (₹)</th>
+      <th>Total volume</th>
+      <th>Sentiment</th>
+    </tr>
+  </thead>
+  <tbody id="bin-table-body"></tbody>
+</table>
+
+<p class="footer">Data via Yahoo Finance public API · Monthly bars · Top 4 volume clusters shown · Support = highest up-volume bin · Resistance = highest down-volume bin</p>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// =========================================================
+// CONFIGURATION
+// =========================================================
+const COMPANIES = {
+  Reliance: 'RELIANCE.NS',
+  Infosys:  'INFY.NS',
+  TCS:      'TCS.NS',
+  TMPV:     'TMPV.NS'
+};
+const INTERVAL_COUNT = 10;
+const TOP_N = 4;
+
+let chartInstance = null;
+let currentStock = 'Reliance';
+
+// =========================================================
+// STATUS HELPER
+// =========================================================
+function setStatus(msg, isError = false) {
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.style.color = isError ? '#dc2626' : '#6b7280';
+}
+
+// =========================================================
+// DATA FETCHING — Yahoo Finance public chart API
+// =========================================================
+async function fetchYahoo(ticker) {
+  const end   = Math.floor(Date.now() / 1000);
+  const start = end - 10 * 365 * 24 * 3600;
+  const url   = \`https://query1.finance.yahoo.com/v8/finance/chart/\${encodeURIComponent(ticker)}?interval=1mo&period1=\${start}&period2=\${end}\`;
+
+  const res  = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error(\`HTTP \${res.status} from Yahoo Finance\`);
+
+  const json   = await res.json();
+  const result = json?.chart?.result?.[0];
+  if (!result) throw new Error('No chart data returned');
+
+  const timestamps = result.timestamps || result.timestamp;
+  const q          = result.indicators.quote[0];
+
+  return timestamps
+    .map((t, i) => ({
+      date:   new Date(t * 1000),
+      open:   q.open[i],
+      high:   q.high[i],
+      low:    q.low[i],
+      close:  q.close[i],
+      volume: q.volume[i]
+    }))
+    .filter(d => d.close != null && d.volume != null);
+}
+
+// =========================================================
+// INTERVAL VOLUME S/R CALCULATION
+// =========================================================
+function calcSR(data) {
+  const priceMin = Math.min(...data.map(d => d.low));
+  const priceMax = Math.max(...data.map(d => d.high));
+  const step     = (priceMax - priceMin) / INTERVAL_COUNT;
+
+  // Initialise bins
+  const bins = Array.from({ length: INTERVAL_COUNT }, (_, i) => ({
+    bin:      i + 1,
+    low:      priceMin + i * step,
+    high:     priceMin + (i + 1) * step,
+    totalVol: 0,
+    upVol:    0,
+    downVol:  0
+  }));
+
+  // Distribute candle volume into bins
+  for (const d of data) {
+    const mid = (d.high + d.low) / 2;
+    let idx   = Math.floor((mid - priceMin) / step);
+    idx       = Math.max(0, Math.min(INTERVAL_COUNT - 1, idx));
+
+    bins[idx].totalVol += d.volume;
+    if      (d.close > d.open) bins[idx].upVol   += d.volume;
+    else if (d.close < d.open) bins[idx].downVol += d.volume;
+  }
+
+  // Assign sentiment
+  bins.forEach(b => {
+    b.sentiment = b.upVol > b.downVol ? 'Positive' : 'Negative';
+  });
+
+  // Sort by total volume descending → top N
+  const sorted = [...bins].sort((a, b) => b.totalVol - a.totalVol);
+  const topN   = sorted.slice(0, TOP_N);
+
+  // Support: highest upVol among positive top-N (fallback: all bins)
+  const posTops  = topN.filter(b => b.sentiment === 'Positive');
+  const support  = posTops.length
+    ? posTops.sort((a, b) => b.upVol - a.upVol)[0]
+    : [...bins].sort((a, b) => b.upVol - a.upVol)[0];
+
+  // Resistance: highest downVol among negative top-N (fallback: all bins)
+  const negTops    = topN.filter(b => b.sentiment === 'Negative');
+  const resistance = negTops.length
+    ? negTops.sort((a, b) => b.downVol - a.downVol)[0]
+    : [...bins].sort((a, b) => b.downVol - a.downVol)[0];
+
+  return { bins, topN, support, resistance, priceMin, priceMax };
+}
+
+// =========================================================
+// FORMATTERS
+// =========================================================
+function fmt(n) {
+  return n == null
+    ? '—'
+    : n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+function fmtVol(n) {
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(n);
+}
+
+// =========================================================
+// RENDER — METRIC CARDS
+// =========================================================
+function renderMetrics(data, support, resistance) {
+  const latest = data[data.length - 1].close;
+  const first  = data[0].close;
+  const chg    = ((latest - first) / first * 100).toFixed(1);
+
+  const cards = [
+    { label: 'Latest close',    val: '₹' + fmt(latest) },
+    { label: '10Y change',      val: (chg > 0 ? '+' : '') + chg + '%',
+      color: chg > 0 ? '#15803d' : '#dc2626' },
+    { label: 'Support zone',    val: '₹' + fmt(support.low) + ' – ₹' + fmt(support.high),
+      color: '#15803d' },
+    { label: 'Resistance zone', val: '₹' + fmt(resistance.low) + ' – ₹' + fmt(resistance.high),
+      color: '#dc2626' }
+  ];
+
+  document.getElementById('metric-cards').innerHTML = cards.map(c => \`
+    <div class="metric-card">
+      <div class="label">\${c.label}</div>
+      <div class="value" style="color:\${c.color || '#1a1a1a'}">\${c.val}</div>
+    </div>\`).join('');
+}
+
+// =========================================================
+// RENDER — CHART (Chart.js + custom zone plugin)
+// =========================================================
+function renderChart(data, topN, support, resistance) {
+  const labels = data.map(d =>
+    d.date.toLocaleDateString('en-IN', { year: '2-digit', month: 'short' })
+  );
+  const prices = data.map(d => d.close);
+
+  // Custom plugin draws filled rectangles for zones
+  const srZonesPlugin = {
+    id: 'srZones',
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+
+      function drawBand(low, high, fillColor, alpha) {
+        const y1 = y.getPixelForValue(high);
+        const y2 = y.getPixelForValue(low);
+        ctx.save();
+        ctx.fillStyle = fillColor;
+        ctx.globalAlpha = alpha;
+        ctx.fillRect(left, Math.min(y1, y2), right - left, Math.abs(y2 - y1));
+        ctx.restore();
       }
+
+      // Top-N volume clusters (amber tint)
+      topN.forEach(b => drawBand(b.low, b.high, '#f59e0b', 0.10));
+      // Support (green)
+      drawBand(support.low, support.high, '#22c55e', 0.35);
+      // Resistance (red)
+      drawBand(resistance.low, resistance.high, '#ef4444', 0.35);
+    }
+  };
+
+  if (chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(document.getElementById('srChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label:       'Close',
+        data:        prices,
+        borderColor: '#1e293b',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension:     0.2,
+        fill:        false
+      }]
+    },
+    options: {
+      responsive:          true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: ctx => '₹' + fmt(ctx.parsed.y) }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { autoSkip: true, maxTicksLimit: 14, maxRotation: 0, font: { size: 11 } },
+          grid:  { display: false }
+        },
+        y: {
+          ticks: { callback: v => '₹' + fmt(v), font: { size: 11 } },
+          grid:  { color: 'rgba(0,0,0,0.06)' }
+        }
+      }
+    },
+    plugins: [srZonesPlugin]
+  });
+
+  document.getElementById('chart-legend').innerHTML = \`
+    <span><span class="legend-swatch" style="background:#1e293b;height:3px;border-radius:1px"></span>Close price</span>
+    <span><span class="legend-swatch" style="background:rgba(34,197,94,0.45)"></span>Support zone</span>
+    <span><span class="legend-swatch" style="background:rgba(239,68,68,0.45)"></span>Resistance zone</span>
+    <span><span class="legend-swatch" style="background:rgba(245,158,11,0.25)"></span>Top volume clusters</span>\`;
+}
+
+// =========================================================
+// RENDER — BIN TABLE
+// =========================================================
+function renderTable(topN, support, resistance) {
+  document.getElementById('bin-table-body').innerHTML = topN.map(b => {
+    const isSupport = b.bin === support.bin;
+    const isRes     = b.bin === resistance.bin;
+    const rowBg     = isSupport ? '#f0fdf4' : isRes ? '#fef2f2' : '';
+    const tag       = isSupport
+      ? ' <span class="badge badge-support">support</span>'
+      : isRes
+      ? ' <span class="badge badge-resistance">resistance</span>'
+      : '';
+    const sentClass = b.sentiment === 'Positive' ? 'badge-pos' : 'badge-neg';
+
+    return \`<tr style="background:\${rowBg}">
+      <td>\${b.bin}\${tag}</td>
+      <td>₹\${fmt(b.low)}</td>
+      <td>₹\${fmt(b.high)}</td>
+      <td>\${fmtVol(b.totalVol)}</td>
+      <td><span class="badge \${sentClass}">\${b.sentiment}</span></td>
+    </tr>\`;
+  }).join('');
+}
+
+// =========================================================
+// LOAD STOCK (full pipeline)
+// =========================================================
+async function loadStock(name) {
+  currentStock = name;
+  setStatus('Fetching data from Yahoo Finance…');
+  document.getElementById('metric-cards').innerHTML  = '';
+  document.getElementById('bin-table-body').innerHTML = '';
+  document.getElementById('chart-legend').innerHTML   = '';
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+
+  // Update tab styles
+  document.querySelectorAll('#stock-tabs button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.name === name);
+  });
+
+  try {
+    const ticker = COMPANIES[name];
+    const data   = await fetchYahoo(ticker);
+    if (!data.length) throw new Error('Yahoo returned empty data');
+
+    const { bins, topN, support, resistance } = calcSR(data);
+
+    renderMetrics(data, support, resistance);
+    renderChart(data, topN, support, resistance);
+    renderTable(topN, support, resistance);
+
+    const y0 = data[0].date.getFullYear();
+    const y1 = data[data.length - 1].date.getFullYear();
+    setStatus(\`\${data.length} monthly bars · \${y0}–\${y1}\`);
+
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+    document.getElementById('metric-cards').innerHTML =
+      \`<p class="error-msg">Could not load data. Yahoo Finance may be blocking the request. Try again or open in a browser with no CORS restrictions.</p>\`;
+    console.error(err);
+  }
+}
+
+// =========================================================
+// BUILD TABS & INIT
+// =========================================================
+function buildTabs() {
+  const container = document.getElementById('stock-tabs');
+  Object.keys(COMPANIES).forEach(name => {
+    const btn       = document.createElement('button');
+    btn.textContent = name;
+    btn.dataset.name = name;
+    btn.onclick     = () => loadStock(name);
+    container.appendChild(btn);
+  });
+}
+
+buildTabs();
+loadStock(currentStock);
+</script>
+</body>
+</html>`);
     } else {
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(dashboardHTML());
