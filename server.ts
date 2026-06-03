@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import crypto from "crypto";
 
 async function startServer() {
   const app = express();
@@ -13,21 +14,86 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  app.post("/api/nifty/quote", async (req, res) => {
+  // STEP 1: Login to get refresh token
+  app.post("/api/mstock/login", async (req, res) => {
     try {
-      const apiKey = req.body.apiKey || process.env.MSTOCK_API_KEY;
-      const rawJwtToken = req.body.jwtToken || process.env.MSTOCK_JWT_TOKEN;
+      const { clientcode, password, totp } = req.body;
 
-      if (!apiKey || !rawJwtToken) {
+      if (!clientcode || !password) {
+        return res.status(400).json({ error: "Missing clientcode or password" });
+      }
+
+      const response = await fetch("https://api.mstock.trade/openapi/typeb/connect/login", {
+        method: "POST",
+        headers: {
+          "X-Mirae-Version": "1",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          clientcode,
+          password,
+          totp: totp || "",
+          state: ""
+        })
+      });
+
+      const data = await response.json();
+      res.json(data);
+    } catch (err: any) {
+      console.error("[LOGIN ERROR]", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // STEP 2: Generate session (JWT) from OTP and refresh token
+  app.post("/api/mstock/session", async (req, res) => {
+    try {
+      const { clientcode, refreshToken, otp, apiKey } = req.body;
+      
+      if (!clientcode || !refreshToken || !otp || !apiKey) {
+        return res.status(400).json({ error: "Missing required parameters for session generation." });
+      }
+
+      const cleanApiKey = apiKey.trim();
+      const checksumRaw = clientcode + refreshToken + cleanApiKey;
+      const checksum = crypto.createHash('sha256').update(checksumRaw).digest('hex');
+
+      const response = await fetch("https://api.mstock.trade/openapi/typeb/session/token", {
+        method: "POST",
+        headers: {
+          "X-Mirae-Version": "1",
+          "X-PrivateKey": cleanApiKey,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          refreshToken,
+          otp,
+          checksum
+        })
+      });
+
+      const data = await response.json();
+      res.json(data);
+    } catch (err: any) {
+       console.error("[SESSION ERROR]", err.message);
+       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // STEP 3: Poll OHLC Quote
+  app.post("/api/mstock/quote", async (req, res) => {
+    try {
+      const { apiKey, jwtToken } = req.body;
+
+      if (!apiKey || !jwtToken) {
           return res.status(400).json({ error: "Missing API Key or JWT Token" });
       }
 
-      // Fix common copy-paste errors for IA401: remove "Bearer " if present so we don't accidentally double it.
-      const cleanJwtToken = rawJwtToken.replace(/^Bearer\s+/i, "").trim();
+      const cleanJwtToken = jwtToken.replace(/^Bearer\s+/i, "").trim();
       const cleanApiKey = apiKey.trim();
 
       const response = await fetch("https://api.mstock.trade/openapi/typeb/instruments/quote", {
-        method: "POST", // API typically ignores body if using GET in Node 18+, forcing POST works.
+        method: "POST", // POST instead of GET because fetch blocks bodies in GET requests
         headers: {
           "X-Mirae-Version": "1",
           "Authorization": `Bearer ${cleanJwtToken}`,
@@ -42,7 +108,6 @@ async function startServer() {
 
       const data = await response.json();
       
-      // If we still get IA401, return exactly the API's failure to help with debugging
       if (data.status !== "true") {
           console.error(`[MSTOCK API ERROR] ${data.message} (${data.errorcode})`);
           return res.status(response.status !== 200 ? response.status : 400).json({ 
