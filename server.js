@@ -16,10 +16,10 @@ const { authenticator } = require("otplib");
 // CONFIGURATION
 // ─────────────────────────────────────────────
 const CONFIG = {
-  clientCode:     "YOUR_CLIENT_CODE",
-  password:       "YOUR_PASSWORD",
-  apiKey:         "YOUR_API_KEY",
-  totpSecret:     "YOUR_TOTP_SECRET",   // set "" to use OTP SMS
+  clientCode:     "MA2468211",
+  password:       "Chh@ya001",
+  apiKey:         "pznEP6Gnv3kRsradk+fCeAw3/Q4Fx2quQg3hEl4q2BA=",
+  totpSecret:     "I2QG4TGM6HZ5ZGG23OED33A3HZSS3J2B",   // set "" to use OTP SMS
 
   niftyToken:     "26000",
   niftyExchange:  "NSE",
