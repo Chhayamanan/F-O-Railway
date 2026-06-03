@@ -648,6 +648,22 @@ function startDashboard() {
     if (req.url === "/api/state") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ...state, marketOpen: isMarketOpen() }));
+    } else if (req.url.startsWith("/api/chart-data?ticker=")) {
+      const urlParams = new URL(req.url, `http://${req.headers.host}`).searchParams;
+      const ticker = urlParams.get('ticker');
+      try {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setFullYear(endDate.getFullYear() - 10);
+        const chartRes = await yahooFinance.chart(ticker, { period1: startDate, period2: endDate, interval: '1mo' });
+        const rawDf = chartRes.quotes;
+        const df = rawDf.filter(r => r.high !== null && r.low !== null && r.close !== null && r.open !== null && r.volume !== null);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(df));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
     } else if (req.url === "/charts") {
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(`<!DOCTYPE html>
@@ -751,30 +767,20 @@ function setStatus(msg, isError = false) {
 // DATA FETCHING — Yahoo Finance public chart API
 // =========================================================
 async function fetchYahoo(ticker) {
-  const end   = Math.floor(Date.now() / 1000);
-  const start = end - 10 * 365 * 24 * 3600;
-  const url   = \`https://query1.finance.yahoo.com/v8/finance/chart/\${encodeURIComponent(ticker)}?interval=1mo&period1=\${start}&period2=\${end}\`;
+  const res = await fetch('/api/chart-data?ticker=' + encodeURIComponent(ticker));
+  if (!res.ok) throw new Error(`HTTP ${res.status} from proxy`);
 
-  const res  = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new Error(\`HTTP \${res.status} from Yahoo Finance\`);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
 
-  const json   = await res.json();
-  const result = json?.chart?.result?.[0];
-  if (!result) throw new Error('No chart data returned');
-
-  const timestamps = result.timestamps || result.timestamp;
-  const q          = result.indicators.quote[0];
-
-  return timestamps
-    .map((t, i) => ({
-      date:   new Date(t * 1000),
-      open:   q.open[i],
-      high:   q.high[i],
-      low:    q.low[i],
-      close:  q.close[i],
-      volume: q.volume[i]
-    }))
-    .filter(d => d.close != null && d.volume != null);
+  return data.map(d => ({
+    date:   new Date(d.date),
+    open:   d.open,
+    high:   d.high,
+    low:    d.low,
+    close:  d.close,
+    volume: d.volume
+  }));
 }
 
 // =========================================================
