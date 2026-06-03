@@ -50,14 +50,15 @@ function App() {
         }
 
         if (data.status !== "true" || !data.data?.fetched || data.data.fetched.length === 0) {
-            const errorMsg = data.message || "No data in response";
+            const errorMsg = data.message || data.error || "No data in response";
             setError(`Error: ${errorMsg}`);
             addLog(`[ERROR] ${errorMsg} (${data.errorcode || 'Unknown'})`, 'error');
             return;
         }
 
         setError(null);
-        const { ltp, open, high, low } = data.data.fetched[0];
+        const fetchedData = data.data.fetched[0];
+        const { ltp, open, high, low } = fetchedData;
         
         const pLtp = parseFloat(ltp);
         const pHigh = parseFloat(high);
@@ -127,7 +128,7 @@ function App() {
             <h1 className="text-2xl font-bold text-white tracking-tight shrink-0 flex items-center gap-2">
               <span className="text-blue-500">⚡</span> Nifty 50 Signal Tracker
             </h1>
-            <p className="text-slate-500 text-sm mt-1">Price Action Breakout Monitor</p>
+            <p className="text-slate-500 text-sm mt-1">Price Action Breakout Monitor (IA401 Protected)</p>
           </div>
           
           <button 
@@ -142,24 +143,24 @@ function App() {
 
         {/* Config Panel */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-1">
-             <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest pl-1">API Key</label>
+          <div className="space-y-1 border border-slate-800 bg-[#121212] p-4 rounded-xl">
+             <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest pl-1 block mb-2">API Key</label>
              <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} disabled={isRunning}
-                className="w-full bg-[#121212] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 text-slate-300"
+                className="w-full bg-[#0A0A0A] border border-slate-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 text-slate-300"
                 placeholder="mStock API Key"
              />
           </div>
-          <div className="space-y-1 md:col-span-1">
-             <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest pl-1">JWT Token</label>
+          <div className="space-y-1 border border-slate-800 bg-[#121212] p-4 rounded-xl md:col-span-1">
+             <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest pl-1 block mb-2">JWT Token</label>
              <input type="password" value={jwtToken} onChange={e => setJwtToken(e.target.value)} disabled={isRunning}
-                className="w-full bg-[#121212] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 text-slate-300"
-                placeholder="Bearer Token"
+                className="w-full bg-[#0A0A0A] border border-slate-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 text-slate-300"
+                placeholder="Paste Bearer Token"
              />
           </div>
-          <div className="space-y-1">
-             <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest pl-1">Interval (Secs)</label>
+          <div className="space-y-1 border border-slate-800 bg-[#121212] p-4 rounded-xl">
+             <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest pl-1 block mb-2">Interval (Secs)</label>
              <input type="number" min="1" value={intervalSecs} onChange={e => setIntervalSecs(Number(e.target.value) || 15)} disabled={isRunning}
-                className="w-full bg-[#121212] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 text-slate-300"
+                className="w-full bg-[#0A0A0A] border border-slate-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 text-slate-300"
              />
           </div>
         </div>
@@ -248,4 +249,3 @@ function App() {
 }
 
 export default App;
-

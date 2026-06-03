@@ -1,53 +1,30 @@
 {
-  "name": "react-example",
+  "name": "nifty-tracker",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx src/server.ts",
-    "build": "vite build && esbuild src/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "NODE_ENV=production node dist/server.cjs",
-    "preview": "vite preview",
-    "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
-  },
-  "engines": {
-    "node": "22.x"
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs"
   },
   "dependencies": {
-    "@google/genai": "^1.29.0",
-    "@mstock-mirae-asset/nodetradingapi-typeb": "^0.0.3",
-    "@tailwindcss/vite": "^4.1.14",
-    "@vitejs/plugin-react": "^5.0.4",
-    "adm-zip": "^0.5.17",
-    "axios": "^1.16.0",
-    "date-fns": "^4.4.0",
-    "dotenv": "^17.2.3",
-    "express": "^4.21.2",
-    "lucide-react": "^0.546.0",
-    "mconnectb": "^1.0.0",
-    "motion": "^12.23.24",
-    "otpauth": "^9.5.1",
-    "otplib": "^13.4.0",
-    "react": "^19.0.1",
-    "react-dom": "^19.0.1",
-    "totp-generator": "^2.0.1",
-    "vite": "^6.2.3",
-    "ws": "^8.21.0",
-    "xlsx": "^0.18.5",
-    "yahoo-finance2": "^3.15.2"
+    "express": "^4.21.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^0.446.0"
   },
   "devDependencies": {
-    "@types/express": "^4.17.25",
-    "@types/node": "^22.19.19",
-    "@types/react": "^19.2.15",
-    "@types/react-dom": "^19.2.3",
-    "@types/ws": "^8.18.1",
-    "autoprefixer": "^10.4.21",
-    "esbuild": "^0.28.0",
-    "tailwindcss": "^4.1.14",
-    "tsx": "^4.21.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "@types/express": "^4.17.21",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.2",
+    "tsx": "^4.19.0",
+    "ts-node": "^10.9.2",
+    "esbuild": "^0.23.1"
   }
 }
