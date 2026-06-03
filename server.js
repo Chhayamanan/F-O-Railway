@@ -274,11 +274,31 @@ async function tradingLoop() {
       const low  = parseFloat(ohlc.low);
       const cls  = parseFloat(ohlc.close);
 
-      if (dayHigh === null) { dayHigh = high; dayLow = low; }
-      dayHigh = Math.max(dayHigh, high);
-      dayLow  = Math.min(dayLow,  low);
+      // 1. Check breakout against the High/Low from the PAST 30-second refresh
+      if (dayHigh !== null && dayLow !== null) {
+        if (ltp > dayHigh && orderPlaced !== "CALL") {
+          info(`BREAKOUT: LTP (${ltp.toFixed(2)}) broke past 30s High (${dayHigh.toFixed(2)}) — Buying CALL`);
+          const inst = await findNiftyOption("CE", ltp);
+          await placeOrder(inst, "CALL");
+          orderPlaced = "CALL"; state.signal = "CALL"; state.orderPlaced = "CALL";
+        } else if (ltp < dayLow && orderPlaced !== "PUT") {
+          info(`BREAKDOWN: LTP (${ltp.toFixed(2)}) broke past 30s Low (${dayLow.toFixed(2)}) — Buying PUT`);
+          const inst = await findNiftyOption("PE", ltp);
+          await placeOrder(inst, "PUT");
+          orderPlaced = "PUT"; state.signal = "PUT"; state.orderPlaced = "PUT";
+        } else if (!orderPlaced) {
+          state.signal = "watching";
+        }
+      }
 
-      // update shared state for dashboard
+      // 2. Update current High/Low reference for the next cycle
+      if (dayHigh === null) { dayHigh = high; dayLow = low; }
+      else {
+        dayHigh = Math.max(dayHigh, high);
+        dayLow  = Math.min(dayLow,  low);
+      }
+
+      // 3. update shared state for dashboard
       Object.assign(state, {
         ltp, open: parseFloat(ohlc.open), high, low, close: cls,
         chgAbs: ltp - cls, chgPct: ((ltp - cls) / cls) * 100,
@@ -287,20 +307,6 @@ async function tradingLoop() {
       });
 
       info(`LTP: ${ltp.toFixed(2)}  High: ${dayHigh.toFixed(2)}  Low: ${dayLow.toFixed(2)}  Order: ${orderPlaced || "None"}`);
-
-      if (ltp > dayHigh && orderPlaced !== "CALL") {
-        info("BREAKOUT ABOVE DAY HIGH — Buying CALL");
-        const inst = await findNiftyOption("CE", ltp);
-        await placeOrder(inst, "CALL");
-        orderPlaced = "CALL"; state.signal = "CALL"; state.orderPlaced = "CALL";
-      } else if (ltp < dayLow && orderPlaced !== "PUT") {
-        info("BREAKDOWN BELOW DAY LOW — Buying PUT");
-        const inst = await findNiftyOption("PE", ltp);
-        await placeOrder(inst, "PUT");
-        orderPlaced = "PUT"; state.signal = "PUT"; state.orderPlaced = "PUT";
-      } else {
-        state.signal = "watching";
-      }
 
     } catch (err) {
       error("Error: " + err.message);
@@ -474,10 +480,10 @@ async function refresh() {
     const bd = document.getElementById('sig-badge');
     if (s.signal === 'CALL') {
       sb.className='signal sig-call'; bd.className='badge badge-call'; bd.textContent='BUY CALL';
-      st.textContent='Price broke above day high — CALL order placed';
+      st.textContent='Price broke above past 30s high — CALL order placed';
     } else if (s.signal === 'PUT') {
       sb.className='signal sig-put'; bd.className='badge badge-put'; bd.textContent='BUY PUT';
-      st.textContent='Price broke below day low — PUT order placed';
+      st.textContent='Price broke below past 30s low — PUT order placed';
     } else {
       sb.className='signal sig-watch'; bd.className='badge badge-watch'; bd.textContent='Watching';
       st.textContent='Price within day range — watching for breakout…';
