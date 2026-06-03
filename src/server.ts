@@ -1,9 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
-import fs from "fs";
-import { DataFetcher } from "./services/dataFetcher";
-import { placeOrder, getMConnectClient } from "./services/mStockService";
 
 async function startServer() {
   const app = express();
@@ -16,56 +13,34 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  app.post("/api/stocks/check-breakout", async (req, res) => {
+  app.post("/api/nifty/quote", async (req, res) => {
     try {
-      const status = await DataFetcher.checkStocksPriceBreakout();
-      res.json({ success: true, executedAction: status.executedAction, data: status.data });
-    } catch (err: any) {
-      console.error(err);
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
+      const apiKey = req.body.apiKey || process.env.MSTOCK_API_KEY;
+      const jwtToken = req.body.jwtToken || process.env.MSTOCK_JWT_TOKEN;
 
-  app.get("/api/download-report", (req, res) => {
-    const filePath = path.join(process.cwd(), 'Stock_Baseline_Report.xlsx');
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).send("Report not generated yet. Please click 'Refresh Now' first.");
-    }
-    res.download(filePath, 'Stock_Baseline_Report.xlsx');
-  });
-
-  app.post("/api/order", async (req, res) => {
-    try {
-      const { symbol, token, action } = req.body;
-      
-      console.log(`Received ${action} request for ${symbol}`);
-      const finalToken = token || "11050";
-      const result = await placeOrder(symbol, finalToken, action);
-      res.json({ success: true, result });
-    } catch (err: any) {
-      console.error(err);
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  app.post("/api/nifty/check-breakout", async (req, res) => {
-    try {
-      const { qty } = req.body;
-      const targetQuantity = qty || 25;
-      
-      const status = await DataFetcher.fetchNiftyBreakoutStatus(targetQuantity);
-  
-      if (status.orderParams) {
-          const client = await getMConnectClient();
-          if (typeof (client as any).placeOrder === 'function') {
-             await (client as any).placeOrder(status.orderParams);
-          }
+      if (!apiKey || !jwtToken) {
+          return res.status(400).json({ error: "Missing API Key or JWT Token" });
       }
 
-      res.json({ success: true, executedTrade: status.executedTrade, metrics: status.metrics });
+      const response = await fetch("https://api.mstock.trade/openapi/typeb/instruments/quote", {
+        method: "POST", // Needs to be POST to send the exchangeTokens body
+        headers: {
+          "X-Mirae-Version": "1",
+          "Authorization": `Bearer ${jwtToken}`,
+          "X-PrivateKey": apiKey,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          mode: "OHLC",
+          exchangeTokens: { NSE: ["26000"] }
+        })
+      });
+
+      const data = await response.json();
+      res.json(data);
     } catch (err: any) {
-      console.error("[NIFTY BOT ERROR]", err.message);
-      res.status(500).json({ success: false, error: err.message });
+      console.error("[QUOTE ERROR]", err.message);
+      res.status(500).json({ error: err.message });
     }
   });
 

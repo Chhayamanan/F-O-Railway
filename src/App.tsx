@@ -1,176 +1,246 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'stocks' | 'nifty'>('stocks');
-  const [message, setMessage] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [jwtToken, setJwtToken] = useState('');
+  const [intervalSecs, setIntervalSecs] = useState(15);
+  const [isRunning, setIsRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [quote, setQuote] = useState<{ ltp: number, open: number, high: number, low: number } | null>(null);
+  const [currentSignal, setCurrentSignal] = useState<'BUY' | 'SELL' | null>(null);
   
-  // Stock States
-  const [stocksData, setStocksData] = useState<any[]>([]);
-  const [isScanningStocks, setIsScanningStocks] = useState(false);
+  const prevSignalRef = useRef<'BUY' | 'SELL' | null>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+  
+  const [logs, setLogs] = useState<{ id: number, timestamp: string, message: string, type: 'info' | 'buy' | 'sell' | 'error' | 'clear' }[]>([]);
 
-  // Nifty States
-  const [niftyData, setNiftyData] = useState<any>(null);
-  const [isScanningNifty, setIsScanningNifty] = useState(false);
-  const [niftyQty, setNiftyQty] = useState(25);
-
-  // Poll Backend for Stock Price Action Breakouts
-  const checkStocksBreakout = async () => {
-    try {
-      const resp = await fetch('/api/stocks/check-breakout', { method: 'POST' });
-      const data = await resp.json();
-      if (data.success) {
-        setStocksData(data.data);
-        if (data.executedAction) {
-          setMessage(`🚨 STOCK BOT: Executed order on price breakout!`);
-        }
-      }
-    } catch (e) { console.error("Stock tracking error", e); }
+  const addLog = (message: string, type: 'info' | 'buy' | 'sell' | 'error' | 'clear' = 'info') => {
+    setLogs(prev => [...prev, { 
+      id: Date.now() + Math.random(), 
+      timestamp: new Date().toLocaleTimeString("en-IN"), 
+      message, 
+      type 
+    }].slice(-50));
   };
 
-  // Poll Backend for Nifty Price Action Breakouts
-  const checkNiftyBreakout = async () => {
-    try {
-      const resp = await fetch('/api/nifty/check-breakout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qty: niftyQty })
-      });
-      const data = await resp.json();
-      if (data.success) {
-        setNiftyData(data.metrics);
-        if (data.executedTrade) {
-          setMessage(`🚨 NIFTY BOT: Executed ${data.executedTrade} on dynamic range breakout!`);
+  useEffect(() => {
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
+
+  useEffect(() => {
+    let intervalId: any;
+
+    const fetchQuote = async () => {
+      try {
+        const response = await fetch('/api/nifty/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey, jwtToken })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+           setError(data.error || "Failed to fetch data");
+           addLog(`[ERROR] Request failed: ${data.error}`, 'error');
+           return;
         }
+
+        if (data.status !== "true" || !data.data?.fetched || data.data.fetched.length === 0) {
+            const errorMsg = data.message || "No data in response";
+            setError(`Error: ${errorMsg}`);
+            addLog(`[ERROR] ${errorMsg} (${data.errorcode || 'Unknown'})`, 'error');
+            return;
+        }
+
+        setError(null);
+        const { ltp, open, high, low } = data.data.fetched[0];
+        
+        const pLtp = parseFloat(ltp);
+        const pHigh = parseFloat(high);
+        const pLow = parseFloat(low);
+        const pOpen = parseFloat(open);
+
+        setQuote({ ltp: pLtp, open: pOpen, high: pHigh, low: pLow });
+
+        addLog(`LTP: ${pLtp.toFixed(2)} | Open: ${pOpen.toFixed(2)} | High: ${pHigh.toFixed(2)} | Low: ${pLow.toFixed(2)}`, 'info');
+
+        let newSignal = prevSignalRef.current;
+
+        if (pLtp > pHigh) {
+            if (prevSignalRef.current !== 'BUY') {
+                addLog(`🟢 BUY SIGNAL: LTP ₹${pLtp.toFixed(2)} crossed Day High ₹${pHigh.toFixed(2)}`, 'buy');
+                newSignal = 'BUY';
+            }
+        } else if (pLtp < pLow) {
+             if (prevSignalRef.current !== 'SELL') {
+                addLog(`🔴 SELL SIGNAL: LTP ₹${pLtp.toFixed(2)} crossed Day Low ₹${pLow.toFixed(2)}`, 'sell');
+                newSignal = 'SELL';
+             }
+        } else {
+             if (prevSignalRef.current !== null) {
+                addLog(`Signal cleared — LTP within day range.`, 'clear');
+                newSignal = null;
+             }
+        }
+
+        prevSignalRef.current = newSignal;
+        setCurrentSignal(newSignal);
+
+      } catch (err: any) {
+         setError("Network or server error.");
+         addLog(`[ERROR] Request failed: ${err.message}`, 'error');
       }
-    } catch (e) { console.error("Nifty tracking error", e); }
+    };
+
+    if (isRunning) {
+        fetchQuote();
+        intervalId = setInterval(fetchQuote, intervalSecs * 1000);
+    } else {
+        prevSignalRef.current = null;
+        setCurrentSignal(null);
+    }
+
+    return () => {
+        if (intervalId) clearInterval(intervalId);
+    };
+  }, [isRunning, apiKey, jwtToken, intervalSecs]);
+
+  const toggleRun = () => {
+    if (!apiKey || !jwtToken) {
+      alert("Please provide valid mStock API Key and JWT Token.");
+      return;
+    }
+    setIsRunning(!isRunning);
   };
-
-  // Timers for automated background checking
-  useEffect(() => {
-    let stockInterval: any;
-    if (isScanningStocks) {
-      stockInterval = setInterval(checkStocksBreakout, 5000); // 5-second tight loop for price action
-    }
-    return () => clearInterval(stockInterval);
-  }, [isScanningStocks]);
-
-  useEffect(() => {
-    let niftyInterval: any;
-    if (isScanningNifty) {
-      niftyInterval = setInterval(checkNiftyBreakout, 5000); // 5-second tight loop for options action
-    }
-    return () => clearInterval(niftyInterval);
-  }, [isScanningNifty, niftyQty]);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex items-start justify-center p-8 font-sans">
-      <div className="max-w-5xl w-full bg-slate-800 rounded-xl shadow-2xl border border-slate-700 p-8 space-y-6">
+    <div className="min-h-screen bg-[#0A0A0A] text-slate-200 flex flex-col p-4 md:p-8 font-mono">
+      <div className="max-w-4xl w-full mx-auto space-y-6">
         
-        {/* Navigation Tab Header */}
-        <div className="flex gap-4 border-b border-slate-700 pb-4">
+        {/* Header */}
+        <div className="bg-[#121212] border border-slate-800 rounded-xl p-6 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div>
+            <h1 className="text-2xl font-bold text-white tracking-tight shrink-0 flex items-center gap-2">
+              <span className="text-blue-500">⚡</span> Nifty 50 Signal Tracker
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">Price Action Breakout Monitor</p>
+          </div>
+          
           <button 
-            onClick={() => setActiveTab('stocks')}
-            className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${activeTab === 'stocks' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+            onClick={toggleRun}
+            className={`px-8 py-3 rounded-lg font-bold text-sm tracking-wide transition-all ${
+              isRunning ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.3)]'
+            }`}
           >
-            📈 Stocks High/Low Breakout
-          </button>
-          <button 
-            onClick={() => setActiveTab('nifty')}
-            className={`px-5 py-2.5 rounded-lg font-semibold text-sm transition-all ${activeTab === 'nifty' ? 'bg-purple-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-          >
-            ⚡ Nifty Options Breakout
+            {isRunning ? '🛑 STOP TRACKER' : '🚀 START POLLING'}
           </button>
         </div>
 
-        {message && (
-          <div className="p-4 rounded-lg bg-blue-900/40 border border-blue-700 text-sm text-blue-300 text-center">
-            {message}
+        {/* Config Panel */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-1">
+             <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest pl-1">API Key</label>
+             <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} disabled={isRunning}
+                className="w-full bg-[#121212] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 text-slate-300"
+                placeholder="mStock API Key"
+             />
           </div>
+          <div className="space-y-1 md:col-span-1">
+             <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest pl-1">JWT Token</label>
+             <input type="password" value={jwtToken} onChange={e => setJwtToken(e.target.value)} disabled={isRunning}
+                className="w-full bg-[#121212] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 text-slate-300"
+                placeholder="Bearer Token"
+             />
+          </div>
+          <div className="space-y-1">
+             <label className="text-xs font-semibold text-slate-500 uppercase tracking-widest pl-1">Interval (Secs)</label>
+             <input type="number" min="1" value={intervalSecs} onChange={e => setIntervalSecs(Number(e.target.value) || 15)} disabled={isRunning}
+                className="w-full bg-[#121212] border border-slate-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50 text-slate-300"
+             />
+          </div>
+        </div>
+
+        {/* Status Display */}
+        {error && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-sm font-medium flex items-center gap-3">
+                <span className="text-xl">⚠️</span> {error}
+            </div>
         )}
 
-        {/* TAB 1: STOCKS */}
-        {activeTab === 'stocks' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-end bg-slate-850 p-4 rounded-xl border border-slate-700">
-              <button 
-                onClick={() => setIsScanningStocks(!isScanningStocks)}
-                className={`px-6 py-2 rounded-lg font-bold text-sm ${isScanningStocks ? 'bg-red-600 animate-pulse' : 'bg-green-600'}`}
-              >
-                {isScanningStocks ? '🛑 STOP STOCKS BOT' : '🚀 RUN STOCKS BOT'}
-              </button>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-[#121212] border border-slate-800 rounded-xl p-5 flex flex-col items-center justify-center">
+                <span className="text-xs text-slate-500 uppercase tracking-wider mb-1">Spot LTP</span>
+                <span className="text-2xl font-bold text-white tracking-tight">{quote?.ltp ? quote.ltp.toFixed(2) : '---.--'}</span>
             </div>
-            
-            <div className="overflow-x-auto rounded-lg border border-slate-700">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-700 text-slate-300">
-                  <tr>
-                    <th className="p-4">Stock Name</th>
-                    <th className="p-4 text-right">Current Price</th>
-                    <th className="p-4 text-right text-green-400">Session High</th>
-                    <th className="p-4 text-right text-red-400">Session Low</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-700 bg-slate-800">
-                  {stocksData.length === 0 ? (
-                    <tr><td colSpan={4} className="p-8 text-center text-slate-500">Click Run to stream live high/low boundaries...</td></tr>
-                  ) : (
-                    stocksData.map((stock, i) => (
-                      <tr key={i} className="hover:bg-slate-750 font-mono">
-                        <td className="p-4 font-bold font-sans text-slate-200">{stock.symbol}</td>
-                        <td className="p-4 text-right text-blue-400 font-bold">{stock.ltp.toFixed(2)}</td>
-                        <td className="p-4 text-right text-green-400">{stock.high.toFixed(2)}</td>
-                        <td className="p-4 text-right text-red-400">{stock.low.toFixed(2)}</td>
-                      </tr>
+            <div className="bg-[#121212] border border-slate-800 rounded-xl p-5 flex flex-col items-center justify-center">
+                <span className="text-xs text-slate-500 uppercase tracking-wider mb-1">Open Price</span>
+                <span className="text-2xl font-bold text-slate-300 tracking-tight">{quote?.open ? quote.open.toFixed(2) : '---.--'}</span>
+            </div>
+            <div className="bg-[#121212] border border-green-900/40 rounded-xl p-5 flex flex-col items-center justify-center relative overflow-hidden">
+                <span className="text-xs text-green-500 uppercase tracking-wider mb-1 z-10">Session High</span>
+                <span className="text-2xl font-bold text-green-400 tracking-tight z-10">{quote?.high ? quote.high.toFixed(2) : '---.--'}</span>
+                <div className="absolute inset-0 bg-green-500 opacity-[0.03] z-0 pointer-events-none"></div>
+            </div>
+            <div className="bg-[#121212] border border-red-900/40 rounded-xl p-5 flex flex-col items-center justify-center relative overflow-hidden">
+                <span className="text-xs text-red-500 uppercase tracking-wider mb-1 z-10">Session Low</span>
+                <span className="text-2xl font-bold text-red-400 tracking-tight z-10">{quote?.low ? quote.low.toFixed(2) : '---.--'}</span>
+                <div className="absolute inset-0 bg-red-500 opacity-[0.03] z-0 pointer-events-none"></div>
+            </div>
+        </div>
+
+        {/* Current Signal Banner */}
+        <div className={`transition-all duration-300 rounded-xl border flex flex-col items-center justify-center py-8 
+            ${currentSignal === 'BUY' ? 'bg-green-500/10 border-green-500/30' : 
+              currentSignal === 'SELL' ? 'bg-red-500/10 border-red-500/30' : 'bg-[#121212] border-slate-800'}`}>
+            <span className="text-xs text-slate-400 uppercase tracking-widest mb-2 font-semibold">Active Tracker Status</span>
+            {currentSignal === 'BUY' ? (
+                <div className="flex flex-col items-center animate-pulse">
+                    <span className="text-4xl mb-2">🟢</span>
+                    <h2 className="text-3xl font-black text-green-400 tracking-wider">BUY SIGNAL</h2>
+                </div>
+            ) : currentSignal === 'SELL' ? (
+                <div className="flex flex-col items-center animate-pulse">
+                    <span className="text-4xl mb-2">🔴</span>
+                    <h2 className="text-3xl font-black text-red-400 tracking-wider">SELL SIGNAL</h2>
+                </div>
+            ) : (
+                <h2 className="text-xl font-bold text-slate-500 tracking-wider mt-2 flex items-center gap-2">
+                    {isRunning ? (
+                      <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> POLLING MARKET DATA</span>
+                    ) : 'WAITING FOR INITIALIZATION'}
+                </h2>
+            )}
+        </div>
+
+        {/* Terminal output equivalent */}
+        <div className="bg-[#0A0A0A] border border-slate-800 rounded-xl flex flex-col overflow-hidden">
+            <div className="bg-[#151515] px-4 py-2 border-b border-slate-800 flex justify-between items-center">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Terminal Output</span>
+                {isRunning && <span className="text-[10px] text-blue-400 font-semibold uppercase px-2 py-0.5 bg-blue-500/10 rounded-sm animate-pulse">Live</span>}
+            </div>
+            <div className="h-80 overflow-y-auto p-4 space-y-2 text-sm">
+                {logs.length === 0 ? (
+                    <div className="text-slate-600 italic">No output yet. Start the tracker.</div>
+                ) : (
+                    logs.map((log) => (
+                        <div key={log.id} className={`flex items-start gap-4 ${
+                            log.type === 'buy' ? 'text-green-400 font-semibold bg-green-950/20 p-2 rounded -mx-2' :
+                            log.type === 'sell' ? 'text-red-400 font-semibold bg-red-950/20 p-2 rounded -mx-2' :
+                            log.type === 'error' ? 'text-orange-400/90' :
+                            log.type === 'clear' ? 'text-orange-200/60 object-none italic' : 'text-slate-300'
+                        }`}>
+                            <span className="text-slate-500 shrink-0 font-medium opacity-70">[{log.timestamp}]</span>
+                            <span className="break-all whitespace-pre-wrap">{log.message}</span>
+                        </div>
                     ))
-                  )}
-                </tbody>
-              </table>
+                )}
+                <div ref={logsEndRef} />
             </div>
-          </div>
-        )}
-
-        {/* TAB 2: NIFTY OPTIONS */}
-        {activeTab === 'nifty' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-slate-700/50 rounded-xl border border-slate-600 text-center">
-                <p className="text-xs font-semibold text-slate-400 uppercase">Nifty Spot LTP</p>
-                <p className="text-3xl font-mono font-bold text-blue-400 mt-1">
-                  {niftyData?.ltp ? niftyData.ltp.toFixed(2) : '---.--'}
-                </p>
-              </div>
-              <div className="p-4 bg-green-950/30 rounded-xl border border-green-800/50 text-center">
-                <p className="text-xs font-semibold text-green-400 uppercase">Session High</p>
-                <p className="text-3xl font-mono font-bold text-green-400 mt-1">
-                  {niftyData?.high ? niftyData.high.toFixed(2) : '---.--'}
-                </p>
-              </div>
-              <div className="p-4 bg-red-950/30 rounded-xl border border-red-800/50 text-center">
-                <p className="text-xs font-semibold text-red-400 uppercase">Session Low</p>
-                <p className="text-3xl font-mono font-bold text-red-400 mt-1">
-                  {niftyData?.low ? niftyData.low.toFixed(2) : '---.--'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between bg-slate-850 p-4 rounded-xl border border-slate-700">
-              <div className="flex items-center gap-4">
-                <label className="text-sm font-medium text-slate-300">Options Trading Qty:</label>
-                <input 
-                  type="number" step="25" value={niftyQty} 
-                  onChange={(e) => setNiftyQty(parseInt(e.target.value) || 25)}
-                  className="w-24 px-2 py-1 rounded bg-slate-700 text-white text-center border border-slate-600 focus:outline-none"
-                />
-              </div>
-              <button 
-                onClick={() => setIsScanningNifty(!isScanningNifty)}
-                className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${isScanningNifty ? 'bg-red-600 animate-pulse' : 'bg-purple-600'}`}
-              >
-                {isScanningNifty ? '🛑 STOP NIFTY BOT' : '🚀 RUN NIFTY BOT'}
-              </button>
-            </div>
-          </div>
-        )}
+        </div>
 
       </div>
     </div>
@@ -178,3 +248,4 @@ function App() {
 }
 
 export default App;
+
