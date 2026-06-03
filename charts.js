@@ -1,191 +1,135 @@
-import yfinance as yf
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+npm install yahoo-finance2 asciichart
+import yahooFinance from "yahoo-finance2";
+import asciichart from "asciichart";
 
-# ==========================================
-# STEP 1 - FETCH RIL DATA
-# ==========================================
+const INTERVAL_COUNT = 10;
+const TOP_N = 4;
 
-symbol = "RELIANCE.NS"
+async function run() {
 
-df = yf.download(
-    symbol,
-    period="5y",
-    auto_adjust=False,
-    progress=False
-)
+    const data = await yahooFinance.historical("RELIANCE.NS", {
+        period1: "2020-01-01",
+        interval: "1d"
+    });
 
-df = df[['Open','High','Low','Close','Volume']]
-df.dropna(inplace=True)
+    if (!data || data.length === 0) {
+        console.log("No data found");
+        return;
+    }
 
-# ==========================================
-# STEP 2 - INTERVAL CALCULATION
-# ==========================================
+    const closes = data.map(x => x.close);
+    const closeMin = Math.min(...closes);
+    const closeMax = Math.max(...closes);
 
-INTERVAL_COUNT = 10
-TOP_N = 4
+    const range = closeMax - closeMin;
+    const stepSize = range / INTERVAL_COUNT;
 
-close_min = df["Close"].min()
-close_max = df["Close"].max()
+    const bins = [];
 
-price_range = close_max - close_min
-step_size = price_range / INTERVAL_COUNT
+    for (let i = 0; i < INTERVAL_COUNT; i++) {
+        bins.push({
+            bin: i + 1,
+            low: closeMin + (i * stepSize),
+            high: closeMin + ((i + 1) * stepSize),
+            totalVol: 0,
+            upVol: 0,
+            downVol: 0
+        });
+    }
 
-bins = []
+    for (const row of data) {
 
-for i in range(INTERVAL_COUNT):
-    low = close_min + i * step_size
-    high = low + step_size
+        if (
+            row.high == null ||
+            row.low == null ||
+            row.open == null ||
+            row.close == null ||
+            row.volume == null
+        ) continue;
 
-    bins.append({
-        "Bin": i + 1,
-        "Low": low,
-        "High": high,
-        "TotalVol": 0,
-        "UpVol": 0,
-        "DownVol": 0
-    })
+        const midPrice = (row.high + row.low) / 2;
 
-# ==========================================
-# STEP 3 - ASSIGN VOLUME TO INTERVALS
-# ==========================================
+        let idx = Math.floor((midPrice - closeMin) / stepSize);
 
-for _, row in df.iterrows():
+        idx = Math.max(0, Math.min(idx, INTERVAL_COUNT - 1));
 
-    mid_price = (row["High"] + row["Low"]) / 2
+        bins[idx].totalVol += row.volume;
 
-    idx = int((mid_price - close_min) / step_size)
+        if (row.close > row.open) {
+            bins[idx].upVol += row.volume;
+        } else if (row.close < row.open) {
+            bins[idx].downVol += row.volume;
+        }
+    }
 
-    idx = max(0, min(idx, INTERVAL_COUNT - 1))
+    bins.forEach(b => {
 
-    bins[idx]["TotalVol"] += row["Volume"]
+        if (b.upVol > b.downVol) {
+            b.type = "Positive";
+        } else if (b.downVol > b.upVol) {
+            b.type = "Negative";
+        } else {
+            b.type = "Neutral";
+        }
+    });
 
-    if row["Close"] > row["Open"]:
-        bins[idx]["UpVol"] += row["Volume"]
+    const top4 = [...bins]
+        .sort((a, b) => b.totalVol - a.totalVol)
+        .slice(0, TOP_N);
 
-    elif row["Close"] < row["Open"]:
-        bins[idx]["DownVol"] += row["Volume"]
+    let support = top4
+        .filter(x => x.upVol > x.downVol)
+        .sort((a, b) => b.upVol - a.upVol)[0];
 
-# ==========================================
-# STEP 4 - CREATE TABLE
-# ==========================================
+    if (!support) {
+        support = [...bins]
+            .sort((a, b) => b.upVol - a.upVol)[0];
+    }
 
-interval_df = pd.DataFrame(bins)
+    let resistance = top4
+        .filter(x => x.downVol > x.upVol)
+        .sort((a, b) => b.downVol - a.downVol)[0];
 
-interval_df["Type"] = np.where(
-    interval_df["UpVol"] > interval_df["DownVol"],
-    "Positive",
-    np.where(
-        interval_df["DownVol"] > interval_df["UpVol"],
-        "Negative",
-        "Neutral"
-    )
-)
+    if (!resistance) {
+        resistance = [...bins]
+            .sort((a, b) => b.downVol - a.downVol)[0];
+    }
 
-interval_df = interval_df.sort_values(
-    "TotalVol",
-    ascending=False
-)
+    console.log("\n============================");
+    console.log("RIL INTERVAL VOLUME ANALYSIS");
+    console.log("============================\n");
 
-top4 = interval_df.head(TOP_N)
+    console.table(
+        top4.map(x => ({
+            Bin: x.bin,
+            Low: x.low.toFixed(2),
+            High: x.high.toFixed(2),
+            TotalVol: Math.round(x.totalVol),
+            UpVol: Math.round(x.upVol),
+            DownVol: Math.round(x.downVol),
+            Type: x.type
+        }))
+    );
 
-# ==========================================
-# STEP 5 - SUPPORT
-# ==========================================
+    console.log(
+        `Support Zone : ${support.low.toFixed(2)} - ${support.high.toFixed(2)}`
+    );
 
-positive_bins = top4[top4["UpVol"] > top4["DownVol"]]
+    console.log(
+        `Resistance Zone : ${resistance.low.toFixed(2)} - ${resistance.high.toFixed(2)}`
+    );
 
-if len(positive_bins):
-    support_row = positive_bins.loc[
-        positive_bins["UpVol"].idxmax()
-    ]
-else:
-    support_row = interval_df.loc[
-        interval_df["UpVol"].idxmax()
-    ]
+    console.log("\nClose Price Chart\n");
 
-support_low = support_row["Low"]
-support_high = support_row["High"]
+    const last250 = data
+        .slice(-250)
+        .map(x => x.close);
 
-# ==========================================
-# STEP 6 - RESISTANCE
-# ==========================================
+    console.log(
+        asciichart.plot(last250, {
+            height: 25
+        })
+    );
+}
 
-negative_bins = top4[top4["DownVol"] > top4["UpVol"]]
-
-if len(negative_bins):
-    resistance_row = negative_bins.loc[
-        negative_bins["DownVol"].idxmax()
-    ]
-else:
-    resistance_row = interval_df.loc[
-        interval_df["DownVol"].idxmax()
-    ]
-
-resistance_low = resistance_row["Low"]
-resistance_high = resistance_row["High"]
-
-# ==========================================
-# STEP 7 - OUTPUT TABLE
-# ==========================================
-
-print("\nTOP 4 INTERVALS")
-print(top4[
-    [
-        "Bin",
-        "Low",
-        "High",
-        "TotalVol",
-        "UpVol",
-        "DownVol",
-        "Type"
-    ]
-].round(2))
-
-print("\nSUPPORT ZONE")
-print(
-    f"{support_low:.2f} - {support_high:.2f}"
-)
-
-print("\nRESISTANCE ZONE")
-print(
-    f"{resistance_low:.2f} - {resistance_high:.2f}"
-)
-
-# ==========================================
-# STEP 8 - CHART
-# ==========================================
-
-plt.figure(figsize=(16,8))
-
-plt.plot(
-    df.index,
-    df["Close"],
-    linewidth=1.2,
-    label="Close Price"
-)
-
-plt.axhspan(
-    support_low,
-    support_high,
-    alpha=0.25,
-    label="Support Zone"
-)
-
-plt.axhspan(
-    resistance_low,
-    resistance_high,
-    alpha=0.25,
-    label="Resistance Zone"
-)
-
-plt.title(
-    f"{symbol} Interval Volume Support Resistance"
-)
-
-plt.ylabel("Price")
-plt.legend()
-plt.grid(True)
-
-plt.show()
+run().catch(console.error);
