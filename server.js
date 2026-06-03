@@ -11,7 +11,8 @@ const https   = require("https");
 const http    = require("http");
 const fs      = require("fs");
 const { authenticator } = require("otplib");
-const yahooFinance = require("yahoo-finance2").default;
+const YahooFinance = require("yahoo-finance2").default;
+const yahooFinance = new YahooFinance();
 
 // ─────────────────────────────────────────────
 // CONFIGURATION
