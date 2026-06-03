@@ -60,15 +60,27 @@ const state = {
 };
 
 // ─────────────────────────────────────────────
+// TIME HELPER (IST)
+// ─────────────────────────────────────────────
+function getISTDate() {
+  // Convert current system time to Indian Standard Time explicitly
+  return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+}
+
+// ─────────────────────────────────────────────
 // LOGGER
 // ─────────────────────────────────────────────
 const logFile = fs.createWriteStream("nifty_trader.log", { flags: "a" });
 
 function log(level, msg) {
-  const line = `${new Date().toISOString()}  ${level.padEnd(7)}  ${msg}`;
+  const dt = getISTDate();
+  const pad = n => n.toString().padStart(2, '0');
+  const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+
+  const line = `${dateStr}  ${level.padEnd(7)}  ${msg}`;
   console.log(line);
   logFile.write(line + "\n");
-  state.logs.unshift({ t: new Date().toLocaleTimeString("en-IN"), level, msg });
+  state.logs.unshift({ t: `${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`, level, msg });
   if (state.logs.length > 100) state.logs.pop();
 }
 const info  = (m) => log("INFO",  m);
@@ -187,7 +199,7 @@ async function getScripMaster() {
 async function findNiftyOption(optionType, spot) {
   const strike = Math.round(spot / CONFIG.strikeOffset) * CONFIG.strikeOffset;
   const instruments = await getScripMaster();
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const today = getISTDate(); today.setHours(0, 0, 0, 0);
   const candidates = [];
   for (const inst of instruments) {
     if (inst.exch_seg === "NFO" && inst.instrumenttype === "OPTIDX" &&
@@ -229,7 +241,7 @@ async function placeOrder(instrument, optionType) {
 // MARKET HOURS
 // ─────────────────────────────────────────────
 function isMarketOpen() {
-  const now = new Date();
+  const now = getISTDate();
   if (now.getDay() === 0 || now.getDay() === 6) return false;
   const m = now.getHours() * 60 + now.getMinutes();
   return m >= CONFIG.marketOpenH * 60 + CONFIG.marketOpenM &&
@@ -248,7 +260,7 @@ async function tradingLoop() {
   while (true) {
     try {
       if (!isMarketOpen()) {
-        const now = new Date();
+        const now = getISTDate();
         const afterClose = now.getHours() * 60 + now.getMinutes() >
                            CONFIG.marketCloseH * 60 + CONFIG.marketCloseM;
         if (afterClose) { orderPlaced = ""; dayHigh = null; dayLow = null; state.signal = "watching"; }
@@ -270,7 +282,7 @@ async function tradingLoop() {
       Object.assign(state, {
         ltp, open: parseFloat(ohlc.open), high, low, close: cls,
         chgAbs: ltp - cls, chgPct: ((ltp - cls) / cls) * 100,
-        dayHigh, dayLow, lastUpdate: new Date().toLocaleTimeString("en-IN"),
+        dayHigh, dayLow, lastUpdate: getISTDate().toLocaleTimeString("en-US", { hour12: false }),
         orderPlaced,
       });
 
