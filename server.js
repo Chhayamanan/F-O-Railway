@@ -10,6 +10,8 @@
 const https   = require("https");
 const http    = require("http");
 const fs      = require("fs");
+const dns     = require("dns");
+dns.setDefaultResultOrder("ipv4first");
 const { authenticator } = require("otplib");
 
 // ─────────────────────────────────────────────

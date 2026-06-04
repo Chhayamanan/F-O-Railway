@@ -1,4 +1,6 @@
 const http = require('http');
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 const { setGlobalDispatcher, Agent } = require('undici');
 setGlobalDispatcher(new Agent({ connect: { timeout: 60000 } }));
 const { default: YahooFinance } = require('yahoo-finance2');
