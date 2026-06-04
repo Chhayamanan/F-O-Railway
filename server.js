@@ -52,6 +52,7 @@ const state = {
   ltp: null, open: null, high: null, low: null, close: null,
   chgAbs: null, chgPct: null,
   dayHigh: null, dayLow: null,
+  manualHigh: null, manualLow: null,
   signal: "watching",   // "watching" | "CALL" | "PUT"
   lastUpdate: null,
   logs: [],
@@ -275,8 +276,15 @@ async function tradingLoop() {
       const cls  = parseFloat(ohlc.close);
 
       if (dayHigh === null) { dayHigh = high; dayLow = low; }
+      const prevDayHigh = dayHigh;
+      const prevDayLow = dayLow;
+      
       dayHigh = Math.max(dayHigh, high);
       dayLow  = Math.min(dayLow,  low);
+
+      // determine active limits
+      const activeHigh = state.manualHigh !== null ? state.manualHigh : prevDayHigh;
+      const activeLow  = state.manualLow !== null ? state.manualLow : prevDayLow;
 
       // update shared state for dashboard
       Object.assign(state, {
@@ -286,15 +294,15 @@ async function tradingLoop() {
         orderPlaced,
       });
 
-      info(`LTP: ${ltp.toFixed(2)}  High: ${dayHigh.toFixed(2)}  Low: ${dayLow.toFixed(2)}  Order: ${orderPlaced || "None"}`);
+      info(`LTP: ${ltp.toFixed(2)}  LimitUp: ${activeHigh.toFixed(2)}  LimitDn: ${activeLow.toFixed(2)}  Order: ${orderPlaced || "None"}`);
 
-      if (ltp > dayHigh && orderPlaced !== "CALL") {
-        info("BREAKOUT ABOVE DAY HIGH — Buying CALL");
+      if (ltp > activeHigh && orderPlaced !== "CALL") {
+        info("BREAKOUT ABOVE UPPER LIMIT — Buying CALL");
         const inst = await findNiftyOption("CE", ltp);
         await placeOrder(inst, "CALL");
         orderPlaced = "CALL"; state.signal = "CALL"; state.orderPlaced = "CALL";
-      } else if (ltp < dayLow && orderPlaced !== "PUT") {
-        info("BREAKDOWN BELOW DAY LOW — Buying PUT");
+      } else if (ltp < activeLow && orderPlaced !== "PUT") {
+        info("BREAKDOWN BELOW LOWER LIMIT — Buying PUT");
         const inst = await findNiftyOption("PE", ltp);
         await placeOrder(inst, "PUT");
         orderPlaced = "PUT"; state.signal = "PUT"; state.orderPlaced = "PUT";
@@ -334,6 +342,12 @@ function dashboardHTML() {
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
   .status{font-size:12px;color:#888}
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:20px 24px}
+  .manual-limits{grid-column:1 / -1;display:flex;gap:12px;align-items:flex-end;background:#1a1a1a;padding:12px;border-radius:10px;border:1px solid #333;}
+  .input-group{flex:1;}
+  .input-group input{width:100%;padding:8px 12px;border-radius:6px;background:#000;border:1px solid #444;color:#fff;font-size:14px;outline:none;}
+  .input-group input:focus{border-color:#4ade80;}
+  .btn-save{padding:9px 16px;background:#4ade80;color:#052e16;font-weight:600;border:none;border-radius:6px;cursor:pointer;}
+  .btn-clear{padding:9px 16px;background:#333;color:#fff;font-weight:600;border:none;border-radius:6px;cursor:pointer;}
   .card{background:#161616;border:1px solid #2a2a2a;border-radius:10px;padding:16px}
   .card-label{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px}
   .card-value{font-size:26px;font-weight:600;letter-spacing:-0.03em;color:#fff}
@@ -370,18 +384,33 @@ function dashboardHTML() {
 </header>
 
 <div class="grid">
+  <div class="manual-limits">
+    <div class="input-group">
+      <div class="card-label">Manual Upper Limit / High</div>
+      <input type="number" id="inp-high" placeholder="Leave blank for Auto (Day High)">
+    </div>
+    <div class="input-group">
+      <div class="card-label">Manual Lower Limit / Low</div>
+      <input type="number" id="inp-low" placeholder="Leave blank for Auto (Day Low)">
+    </div>
+    <div>
+      <button class="btn-save" id="btn-save" onclick="saveLimits()">Save Limits</button>
+      <button class="btn-clear" onclick="clearLimits()">Clear</button>
+    </div>
+  </div>
+
   <div class="card">
     <div class="card-label">Current LTP</div>
     <div class="card-value" id="ltp">—</div>
     <div class="card-sub" id="ltp-chg">—</div>
   </div>
   <div class="card">
-    <div class="card-label">Day High</div>
+    <div class="card-label">Breakout High</div>
     <div class="card-value up" id="d-high">—</div>
     <div class="card-sub" id="high-gap">—</div>
   </div>
   <div class="card">
-    <div class="card-label">Day Low</div>
+    <div class="card-label">Breakdown Low</div>
     <div class="card-value down" id="d-low">—</div>
     <div class="card-sub" id="low-gap">—</div>
   </div>
@@ -432,6 +461,30 @@ function dashboardHTML() {
 const fmt = n => Number(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const pct  = n => (n>=0?'+':'')+n.toFixed(2)+'%';
 
+async function saveLimits() {
+  const high = document.getElementById('inp-high').value;
+  const low = document.getElementById('inp-low').value;
+  const btn = document.getElementById('btn-save');
+  const org = btn.textContent;
+  btn.textContent = 'Saving...';
+  try {
+    await fetch('/api/limits', {
+       method: 'POST', 
+       headers:{'Content-Type': 'application/json'},
+       body: JSON.stringify({high: high, low: low})
+    });
+    btn.textContent = 'Saved!';
+    setTimeout(() => { btn.textContent = org; }, 2000);
+    refresh();
+  } catch(e) { console.error('Save limit err:', e); btn.textContent = org; }
+}
+
+async function clearLimits() {
+  document.getElementById('inp-high').value = '';
+  document.getElementById('inp-low').value = '';
+  saveLimits();
+}
+
 async function refresh() {
   try {
     const r = await fetch('/api/state');
@@ -446,16 +499,26 @@ async function refresh() {
       chgEl.className   = 'card-sub '+(s.chgAbs>=0?'up':'down');
     }
 
-    if (s.dayHigh) {
-      document.getElementById('d-high').textContent  = fmt(s.dayHigh);
-      document.getElementById('d-low').textContent   = fmt(s.dayLow);
-      document.getElementById('high-gap').textContent = 'Gap: '+fmt(s.dayHigh - s.ltp)+' pts';
-      document.getElementById('low-gap').textContent  = 'Gap: '+fmt(s.ltp - s.dayLow)+' pts';
-      document.getElementById('bl-low').textContent   = 'Low: '+fmt(s.dayLow);
-      document.getElementById('bl-high').textContent  = 'High: '+fmt(s.dayHigh);
+    const activeHigh = s.manualHigh !== null ? s.manualHigh : s.dayHigh;
+    const activeLow = s.manualLow !== null ? s.manualLow : s.dayLow;
+    
+    if (document.activeElement !== document.getElementById('inp-high') && s.manualHigh !== null) {
+      document.getElementById('inp-high').value = s.manualHigh;
+    }
+    if (document.activeElement !== document.getElementById('inp-low') && s.manualLow !== null) {
+      document.getElementById('inp-low').value = s.manualLow;
+    }
 
-      const range = s.dayHigh - s.dayLow || 1;
-      const pos   = Math.min(Math.max((s.ltp - s.dayLow) / range, 0), 1);
+    if (activeHigh) {
+      document.getElementById('d-high').textContent  = fmt(activeHigh) + (s.manualHigh !== null ? ' (M)' : ' (A)');
+      document.getElementById('d-low').textContent   = fmt(activeLow) + (s.manualLow !== null ? ' (M)' : ' (A)');
+      document.getElementById('high-gap').textContent = 'Gap: '+fmt(activeHigh - s.ltp)+' pts';
+      document.getElementById('low-gap').textContent  = 'Gap: '+fmt(s.ltp - activeLow)+' pts';
+      document.getElementById('bl-low').textContent   = 'Low: '+fmt(activeLow);
+      document.getElementById('bl-high').textContent  = 'High: '+fmt(activeHigh);
+
+      const range = activeHigh - activeLow || 1;
+      const pos   = Math.min(Math.max((s.ltp - activeLow) / range, 0), 1);
       document.getElementById('bar-l').style.width  = (pos*40).toFixed(1)+'%';
       document.getElementById('bar-h').style.width  = ((1-pos)*40).toFixed(1)+'%';
       document.getElementById('needle').style.left  = (pos*100).toFixed(1)+'%';
@@ -508,6 +571,24 @@ function startDashboard() {
     if (req.url === "/api/state") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ...state, marketOpen: isMarketOpen() }));
+    } else if (req.url === "/api/limits" && req.method === "POST") {
+      let body = "";
+      req.on('data', chunk => body += chunk.toString());
+      req.on('end', () => {
+        try {
+          const params = JSON.parse(body);
+          if (params.high === null || params.high === "") state.manualHigh = null;
+          else state.manualHigh = parseFloat(params.high);
+          if (params.low === null || params.low === "") state.manualLow = null;
+          else state.manualLow = parseFloat(params.low);
+          
+          info(`Manual Limits Updated -- High: ${state.manualHigh || 'Auto'}, Low: ${state.manualLow || 'Auto'}`);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: true }));
+        } catch(e) {
+          res.writeHead(400); res.end("Bad Request");
+        }
+      });
     } else {
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(dashboardHTML());
