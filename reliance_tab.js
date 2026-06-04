@@ -157,12 +157,4 @@ async function handleRelianceRoute(req, res) {
   }
 }
 
-// 5. Native HTTP Server Setup
-const PORT = process.env.PORT || 3000;
-const server = http.createServer((req, res) => {
-  handleRelianceRoute(req, res);
-});
-
-server.listen(PORT, () => {
-  console.log(`Server is happily running on http://localhost:${PORT}`);
-});
+module.exports = { handleRelianceRoute };
