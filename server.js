@@ -44,6 +44,8 @@ const BASE = "https://api.mstock.trade/openapi/typeb";
 // ─────────────────────────────────────────────
 let jwtToken    = "";
 let orderPlaced = "";
+let lastCallTime = 0;
+let lastPutTime = 0;
 let scripMaster = null;
 let dayHigh     = null;
 let dayLow      = null;
@@ -236,13 +238,13 @@ async function findNiftyOption(optionType, spot) {
 // ─────────────────────────────────────────────
 async function placeOrder(instrument, optionType) {
   const qty = CONFIG.optionLotSize * CONFIG.optionLots;
-  info(`Placing ${optionType} order: ${instrument.name} x${qty}`);
+  info(`Placing ${optionType} order: ${instrument.name} (${CONFIG.optionLots} lot = ${qty} qty)`);
   const data = await apiCall("POST", "/orders/regular", {
     variety: "NORMAL", tradingsymbol: instrument.name, symboltoken: instrument.token,
     exchange: CONFIG.optionExchange, transactiontype: "BUY", ordertype: "MARKET",
     quantity: String(qty), producttype: CONFIG.optionProduct,
     price: "0", triggerprice: "0", squareoff: "0", stoploss: "0",
-    trailingStopLoss: "", disclosedquantity: "", duration: "DAY",
+    trailingStopLoss: "", disclosedquantity: "0", duration: "DAY",
     ordertag: `nifty_${optionType.toLowerCase()}`,
   });
   if (String(data.status).toLowerCase() !== "true")
@@ -309,15 +311,20 @@ async function tradingLoop() {
 
       info(`LTP: ${ltp.toFixed(2)}  LimitUp: ${activeHigh.toFixed(2)}  LimitDn: ${activeLow.toFixed(2)}  Order: ${orderPlaced || "None"}`);
 
-      if (ltp > activeHigh && orderPlaced !== "CALL") {
+      const nowMs = Date.now();
+      const threeHoursMs = 3 * 60 * 60 * 1000;
+
+      if (ltp > activeHigh && (nowMs - lastCallTime > threeHoursMs)) {
         info("BREAKOUT ABOVE UPPER LIMIT — Buying CALL");
         const inst = await findNiftyOption("CE", ltp);
         await placeOrder(inst, "CALL");
+        lastCallTime = nowMs;
         orderPlaced = "CALL"; state.signal = "CALL"; state.orderPlaced = "CALL";
-      } else if (ltp < activeLow && orderPlaced !== "PUT") {
+      } else if (ltp < activeLow && (nowMs - lastPutTime > threeHoursMs)) {
         info("BREAKDOWN BELOW LOWER LIMIT — Buying PUT");
         const inst = await findNiftyOption("PE", ltp);
         await placeOrder(inst, "PUT");
+        lastPutTime = nowMs;
         orderPlaced = "PUT"; state.signal = "PUT"; state.orderPlaced = "PUT";
       } else {
         state.signal = "watching";
