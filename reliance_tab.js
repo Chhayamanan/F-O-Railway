@@ -1,4 +1,6 @@
 const http = require('http');
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 const { default: YahooFinance } = require('yahoo-finance2');
 
 // Initialize yahoo-finance2 with the configuration provided
