@@ -368,6 +368,10 @@ function dashboardHTML() {
   .input-group input:focus{border-color:#4ade80;}
   .btn-save{padding:9px 16px;background:#4ade80;color:#052e16;font-weight:600;border:none;border-radius:6px;cursor:pointer;}
   .btn-clear{padding:9px 16px;background:#333;color:#fff;font-weight:600;border:none;border-radius:6px;cursor:pointer;}
+  .tabs{background:#1a1a1a;padding:10px 24px;border-bottom:1px solid #333;display:flex;gap:12px}
+  .tabs a{color:#888;text-decoration:none;font-size:14px;padding:6px 12px;border-radius:6px;transition:0.2s}
+  .tabs a:hover{color:#fff;background:#333}
+  .tabs a.active{color:#fff;background:#16a34a;font-weight:500}
   .card{background:#161616;border:1px solid #2a2a2a;border-radius:10px;padding:16px}
   .card-label{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px}
   .card-value{font-size:26px;font-weight:600;letter-spacing:-0.03em;color:#fff}
@@ -402,6 +406,10 @@ function dashboardHTML() {
   <h1><span class="dot"></span>Nifty Breakout Bot</h1>
   <span class="status" id="mkt-status">Loading…</span>
 </header>
+<div class="tabs">
+  <a href="/" class="active">Dashboard</a>
+  <a href="/reliance">Reliance Data</a>
+</div>
 
 <div class="grid">
   <div class="manual-limits">
@@ -587,7 +595,13 @@ setInterval(refresh, 5000);
 // DASHBOARD HTTP SERVER
 // ─────────────────────────────────────────────
 function startDashboard() {
+  const { handleRelianceRoute } = require('./reliance_tab');
+
   const server = http.createServer((req, res) => {
+    if (req.url.startsWith("/reliance")) {
+      return handleRelianceRoute(req, res);
+    }
+    
     if (req.url === "/api/state") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ...state, marketOpen: isMarketOpen() }));
