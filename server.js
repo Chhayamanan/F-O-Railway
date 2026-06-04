@@ -204,11 +204,13 @@ async function findNiftyOption(optionType, spot) {
   const candidates = [];
   for (const inst of instruments) {
     if (inst.exch_seg === "NFO" && inst.instrumenttype === "OPTIDX" &&
-        inst.name && inst.name.toUpperCase().includes("NIFTY") &&
-        inst.symbol && inst.symbol.toUpperCase() === optionType) {
+        inst.name && inst.name.toUpperCase() === "NIFTY" &&
+        inst.symbol && inst.symbol.toUpperCase().endsWith(optionType)) {
       const expDate = new Date(inst.expiry);
       if (isNaN(expDate) || expDate < today) continue;
-      candidates.push({ diff: Math.abs(parseFloat(inst.strike || 0) - strike), expDate, inst });
+      let instStrike = parseFloat(inst.strike || 0);
+      if (instStrike > 200000) instStrike /= 100;
+      candidates.push({ diff: Math.abs(instStrike - strike), expDate, inst });
     }
   }
   if (!candidates.length) throw new Error(`No ${optionType} option near strike ${strike}`);
@@ -223,9 +225,9 @@ async function findNiftyOption(optionType, spot) {
 // ─────────────────────────────────────────────
 async function placeOrder(instrument, optionType) {
   const qty = CONFIG.optionLotSize * CONFIG.optionLots;
-  info(`Placing ${optionType} order: ${instrument.name} x${qty}`);
+  info(`Placing ${optionType} order: ${instrument.symbol} x${qty}`);
   const data = await apiCall("POST", "/orders/regular", {
-    variety: "NORMAL", tradingsymbol: instrument.name, symboltoken: instrument.token,
+    variety: "NORMAL", tradingsymbol: instrument.symbol, symboltoken: instrument.token,
     exchange: CONFIG.optionExchange, transactiontype: "BUY", ordertype: "MARKET",
     quantity: String(qty), producttype: CONFIG.optionProduct,
     price: "0", triggerprice: "0", squareoff: "0", stoploss: "0",
