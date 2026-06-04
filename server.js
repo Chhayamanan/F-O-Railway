@@ -28,7 +28,7 @@ const CONFIG = {
   optionLotSize:  25,
   optionLots:     1,
   optionProduct:  "CARRYFORWARD",
-  strikeOffset:   100,
+  strikeOffset:   50,
 
   pollIntervalMs: 30_000,
   marketOpenH:  9,  marketOpenM:  15,
@@ -203,10 +203,22 @@ async function findNiftyOption(optionType, spot) {
   const today = getISTDate(); today.setHours(0, 0, 0, 0);
   const candidates = [];
   for (const inst of instruments) {
-    if (inst.exch_seg === "NFO" && inst.instrumenttype === "OPTIDX" &&
-        inst.name && inst.name.toUpperCase() === "NIFTY" &&
-        inst.symbol && inst.symbol.toUpperCase().endsWith(optionType)) {
-      const expDate = new Date(inst.expiry);
+    const name = (inst.name || "").toUpperCase();
+    const sym = (inst.symbol || "").toUpperCase();
+    
+    if (name.includes("NIFTY") && 
+        !name.includes("BANK") && !name.includes("FIN") && !name.includes("MID") &&
+        sym.endsWith(optionType)) {
+      let expDate = new Date(inst.expiry);
+      if (isNaN(expDate) && typeof inst.expiry === "string") {
+        const m = inst.expiry.toUpperCase().match(/^(\d{2})([A-Z]{3})(\d{2,4})$/);
+        if (m) {
+          const mmap = {JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11};
+          let y = parseInt(m[3], 10);
+          if (y < 100) y += 2000;
+          expDate = new Date(y, mmap[m[2]] || 0, parseInt(m[1], 10));
+        }
+      }
       if (isNaN(expDate) || expDate < today) continue;
       let instStrike = parseFloat(inst.strike || 0);
       if (instStrike > 200000) instStrike /= 100;
