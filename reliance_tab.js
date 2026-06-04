@@ -9,23 +9,50 @@ const { default: YahooFinance } = require('yahoo-finance2');
 const yahooFinance = new YahooFinance({ 
   suppressNotices: ['ripHistorical']
 });
+// Override host to use query1 instead of query2, which sometimes avoids blocks
+if (yahooFinance._opts) {
+  yahooFinance._opts.YF_QUERY_HOST = 'query1.finance.yahoo.com';
+}
 
 // 1. Data Fetcher
 async function getRelianceData() {
   const symbol = 'RELIANCE.NS';
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setFullYear(endDate.getFullYear() - 5);
-
-  const queryOptions = {
-    period1: startDate.toISOString().split('T')[0],
-    period2: endDate.toISOString().split('T')[0],
-    interval: '1d',
-  };
-
   try {
-    const data = await yahooFinance.historical(symbol, queryOptions);
-    return data;
+    // Railway frequently rate-limits or IP-blocks yahoo-finance2 due to excessive crumb/cookie polling. 
+    // This pure REST workaround bypasses the need for crumbs, fetching 5y daily data securely.
+    const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5y`, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+    
+    if (!response.ok) {
+        throw new Error("HTTP " + response.status);
+    }
+    const json = await response.json();
+    const result = json.chart.result[0];
+    const timestamps = result.timestamp;
+    const quotes = result.indicators.quote[0];
+    const adjClose = result.indicators.adjclose ? result.indicators.adjclose[0].adjclose : quotes.close;
+
+    // Format data identically to what yahoo-finance2 returned
+    const data = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      if (quotes.open[i] !== null) {
+        data.push({
+          date: new Date(timestamps[i] * 1000),
+          open: quotes.open[i],
+          high: quotes.high[i],
+          low: quotes.low[i],
+          close: quotes.close[i],
+          adjClose: adjClose[i],
+          volume: quotes.volume[i]
+        });
+      }
+    }
+    // Sort descending by date (most recent first) matching typical views
+    return data.sort((a,b) => b.date - a.date);
   } catch (err) {
     console.error("Error fetching Reliance data:", err);
     throw err;
