@@ -1,4 +1,6 @@
 const http = require('http');
+const { setGlobalDispatcher, Agent } = require('undici');
+setGlobalDispatcher(new Agent({ connect: { timeout: 60000 } }));
 const { default: YahooFinance } = require('yahoo-finance2');
 
 // Initialize yahoo-finance2 with the configuration provided
