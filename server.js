@@ -206,9 +206,8 @@ async function findNiftyOption(optionType, spot) {
     const name = (inst.name || "").toUpperCase();
     const sym = (inst.symbol || "").toUpperCase();
     
-    if (name.includes("NIFTY") && 
-        !name.includes("BANK") && !name.includes("FIN") && !name.includes("MID") &&
-        sym.endsWith(optionType)) {
+    if (sym === "NIFTY" && name.endsWith(optionType) &&
+        !name.includes("BANK") && !name.includes("FIN") && !name.includes("MID")) {
       let expDate = new Date(inst.expiry);
       if (isNaN(expDate) && typeof inst.expiry === "string") {
         const m = inst.expiry.toUpperCase().match(/^(\d{2})([A-Z]{3})(\d{2,4})$/);
@@ -237,9 +236,9 @@ async function findNiftyOption(optionType, spot) {
 // ─────────────────────────────────────────────
 async function placeOrder(instrument, optionType) {
   const qty = CONFIG.optionLotSize * CONFIG.optionLots;
-  info(`Placing ${optionType} order: ${instrument.symbol} x${qty}`);
+  info(`Placing ${optionType} order: ${instrument.name} x${qty}`);
   const data = await apiCall("POST", "/orders/regular", {
-    variety: "NORMAL", tradingsymbol: instrument.symbol, symboltoken: instrument.token,
+    variety: "NORMAL", tradingsymbol: instrument.name, symboltoken: instrument.token,
     exchange: CONFIG.optionExchange, transactiontype: "BUY", ordertype: "MARKET",
     quantity: String(qty), producttype: CONFIG.optionProduct,
     price: "0", triggerprice: "0", squareoff: "0", stoploss: "0",
@@ -326,7 +325,7 @@ async function tradingLoop() {
 
     } catch (err) {
       error("Error: " + err.message);
-      if (/Invalid request|suspended|expired/i.test(err.message)) {
+      if (/Invalid request|suspended|expired|IP Address/i.test(err.message)) {
         warn("Re-logging in ...");
         try { await doLogin(); } catch (e) { error("Re-login failed: " + e.message); }
       }
